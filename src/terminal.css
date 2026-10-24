@@ -477,6 +477,12 @@ kbd { font: 600 10.5px var(--font-data); background: var(--key); color: var(--in
 .help p.fine { font-size: 12.5px; color: var(--muted); }
 .status-list dt { color: var(--muted); font: 500 11px var(--font-label); text-transform: uppercase; letter-spacing: .07em; }
 
+/* the disclaimer gets its own line when the function keys need the width */
+@media (max-width: 1400px) {
+  .fkeys { flex-wrap: wrap; }
+  .disclaim { margin-left: 0; padding-left: 2px; width: 100%; white-space: normal; }
+}
+
 /* ---------- narrow screens: panels stack and the page scrolls ---------- */
 @media (max-width: 860px) {
   html, body { height: auto; }

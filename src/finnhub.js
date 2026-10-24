@@ -111,6 +111,7 @@
       candles: (symbol, resolution, from, to) => get('/stock/candle', { symbol, resolution, from: String(from), to: String(to) }, resolution === 'D' ? 3600e3 : 60e3, 2),
       search: q => get('/search', { q, exchange: 'US' }, 600e3, 3),
       marketStatus: () => get('/stock/market-status', { exchange: 'US' }, 120e3, 0),
+      marketHoliday: () => get('/stock/market-holiday', { exchange: 'US' }, 12 * 3600e3, 0),
 
       // Live trades over WebSocket. Calls onTrade(symbol, price, volume, ms),
       // onState(connecting | open | closed | off) and onError(message).

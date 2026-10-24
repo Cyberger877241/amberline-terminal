@@ -107,6 +107,11 @@ class Handler(BaseHTTPRequestHandler):
             s = q.get("q", "").upper()
             return self._send(200, {"count": 2, "result": [{"description": f"{s} MOCK INC", "displaySymbol": s, "symbol": s, "type": "Common Stock"},
                                                            {"description": f"{s} MOCK ETF", "displaySymbol": s + "X", "symbol": s + "X", "type": "ETP"}]})
+        if path == "/stock/market-holiday":
+            return self._send(200, {"exchange": "US", "timezone": "America/New_York", "data": [
+                {"eventName": "Christmas", "atDate": "2026-12-25", "tradingHour": ""},
+                {"eventName": "Thanksgiving Day", "atDate": "2026-11-27", "tradingHour": "09:30-13:00"},
+                {"eventName": "Thanksgiving Day", "atDate": "2026-11-26", "tradingHour": ""}]})
         if path == "/stock/market-status":
             return self._send(200, {"exchange": "US", "holiday": None, "isOpen": True, "session": "regular", "t": int(time.time()), "timezone": "America/New_York"})
         return self._send(404, {"error": "Unknown endpoint"})

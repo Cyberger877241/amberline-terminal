@@ -176,11 +176,27 @@
     const groups = list => list.map(([label, rows]) => ({ label, syms: rows.map(r => r[0]) }));
 
     // Sessions are keyed by their New York trading date. Candles and the day's
-    // open/high/low only take regular-hours prices (09:30-16:00 ET); pre-market and
-    // after-hours trades move the last price and the tick chart only.
-    const etInfo = ms => { const p = {}; etParts.formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; }); return { day: p.year + '-' + p.month + '-' + p.day, mins: +p.hour * 60 + +p.minute }; };
+    // open/high/low only take regular-hours prices (09:30-16:00 ET, or the shorter hours
+    // Finnhub's holiday calendar gives); pre-market and after-hours trades move the
+    // last price and the tick chart only.
+    const etInfo = ms => { const p = {}; etParts.formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; }); return { day: p.year + '-' + p.month + '-' + p.day, mins: +p.hour * 60 + +p.minute, wd: p.weekday }; };
     const etDate = ms => etInfo(ms).day;
-    const regular = ms => { const m = etInfo(ms).mins; return m >= 570 && m < 960; };
+    const hours = Object.create(null); // 'YYYY-MM-DD' -> [openMins, closeMins], or null when closed
+    const regular = ms => {
+      const x = etInfo(ms);
+      if (x.wd === 'Sat' || x.wd === 'Sun') return false;
+      const h = x.day in hours ? hours[x.day] : [570, 960];
+      return !!h && x.mins >= h[0] && x.mins < h[1];
+    };
+    function loadHolidays() {
+      fh.marketHoliday().then(r => {
+        (r && Array.isArray(r.data) ? r.data : []).forEach(e => {
+          if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e.atDate)) return;
+          const m = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(String(e.tradingHour || ''));
+          hours[e.atDate] = m ? [+m[1] * 60 + +m[2], +m[3] * 60 + +m[4]] : null;
+        });
+      }, () => {});
+    }
     const utcDate = ms => new Date(ms).toISOString().slice(0, 10);
     const BAR = 5 * 60000;
 
@@ -218,6 +234,8 @@
     // A trade from a later trading day starts a new session for this symbol.
     function rollover(i, day) {
       if (i.session && day > i.session) {
+        i.prevSession = i.session;
+        i.prevRef = i.prevClose; // still the reference line for the previous session's chart
         i.prevClose = i.close != null ? i.close : i.last;
         i.open = i.high = i.low = i.close = null;
       }
@@ -226,13 +244,23 @@
 
     function applyQuote(i, q) {
       if (!q || (!q.c && !q.t)) { i.missing = true; return false; }
-      const qms = q.t ? q.t * 1000 : Date.now();
-      const qday = etDate(qms);
       i.quotedAt = Date.now();
       i.missing = false;
-      // Streamed trades already moved this symbol into a newer session: the quote is stale.
+      if (!q.t) { // a price with no timestamp can't be placed in a session
+        if (i.last == null) i.last = q.c;
+        dirty = true;
+        return true;
+      }
+      const qms = q.t * 1000;
+      const qday = etDate(qms);
+      // Streamed trades already moved this symbol into a newer session: the quote is stale,
+      // but its close is the official close of the session we rolled over from.
       if (i.session && qday < i.session) {
-        if (i.prevClose == null) i.prevClose = q.c; // that older session's close is today's reference
+        if (qday === i.prevSession || i.prevClose == null) {
+          i.prevClose = q.c;
+          const intra = i.series['1D'];
+          if (intra && intra.length && etDate(intra[intra.length - 1].t) === i.session) i.refIntra = q.c;
+        }
         dirty = true;
         return true;
       }
@@ -287,6 +315,10 @@
       stream = fh.stream((s, p, v, ms) => {
         const i = I[s];
         if (!i || !(p > 0) || !(ms > 0)) return;
+        if (ms < i.tradeAt) { // a late, older print: it can widen the range but never sets the last price
+          if (regular(ms) && etDate(ms) === i.session && i.high != null) { i.high = Math.max(i.high, p); i.low = Math.min(i.low, p); }
+          return;
+        }
         rollover(i, etDate(ms));
         i.dir = i.last == null || p === i.last ? i.dir : p > i.last ? 'up' : 'dn';
         i.last = p;
@@ -386,15 +418,19 @@
           // Series live on the instrument so every chart of it shares one copy that
           // streamed prices keep current. Charts read them through closures, never a snapshot.
           if (intraday) {
+            bars = bars.filter(b => regular(b.t));
+            if (!bars.length) return ticks('Finnhub returned no regular-session bars for the last few days.');
             const lastDay = etDate(bars[bars.length - 1].t);
             bars = bars.filter(b => etDate(b.t) === lastDay);
             i.series['1D'] = bars;
-            i.refIntra = lastDay === i.session ? i.prevClose : null;
+            i.refIntra = lastDay === i.session ? i.prevClose : lastDay === i.prevSession ? i.prevRef : null;
             const b = bars[bars.length - 1];
             if (lastDay === i.session && i.close != null) { b.c = i.close; b.h = Math.max(b.h, i.close); b.l = Math.min(b.l, i.close); }
             return { kind: 'intraday', ref: () => i.refIntra, series: () => i.series['1D'] || [], xlabel: b2 => etTime.format(b2.t), tlabel: b2 => etDay.format(b2.t) + ' ' + etTime.format(b2.t) + ' ET' };
           }
-          i.series.D = bars;
+          // Merge rather than replace: a 1M fetch must not cut short a 1Y chart of the same symbol.
+          const older = (i.series.D || []).filter(b => b.t < bars[0].t);
+          i.series.D = older.concat(bars);
           syncDaily(i);
           const len = SPANS[tf];
           const long = tf === '6M' || tf === '1Y';
@@ -478,7 +514,8 @@
       onTick: fn => listeners.push(fn),
       start() {
         startStream();
-        stream.set(visible); // subscribe whatever panels registered before the socket existed
+        if (stream) stream.set(visible); // subscribe whatever panels registered before the socket existed
+        if (fh.marketHoliday) { loadHolidays(); setInterval(loadHolidays, 12 * 3600e3); }
         marketStatus();
         setInterval(marketStatus, 5 * 60e3);
         setInterval(schedule, 2000);
