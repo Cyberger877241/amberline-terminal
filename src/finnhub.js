@@ -2,7 +2,7 @@
  * Amberline Terminal: a small Finnhub client.
  *
  * Uses the viewer's own API key, kept in their browser. Requests go through a
- * priority queue that stays under the free plan's 60 calls a minute, and
+ * priority queue that sends at most 50 calls a minute (the free plan allows 60), and
  * identical requests share one in-flight promise and a short cache.
  * Docs: https://finnhub.io/docs/api
  */
@@ -67,7 +67,7 @@
           return body;
         }, () => { throw new FinnhubError('network', "Couldn't reach Finnhub. Check your connection. Embedded previews may block outside requests."); })
         .then(job.resolve, err => {
-          if (err.kind === 'rate' && job.tries < 2) {
+          if (err.kind === 'rate' && job.tries < 1) { // retry once
             job.tries++;
             setTimeout(() => { queue.push(job); pump(); }, 5000);
             return;
@@ -112,8 +112,9 @@
       search: q => get('/search', { q, exchange: 'US' }, 600e3, 3),
       marketStatus: () => get('/stock/market-status', { exchange: 'US' }, 120e3, 0),
 
-      // Live trades over WebSocket. Calls onTrade(symbol, price, volume, ms).
-      stream(onTrade, onState) {
+      // Live trades over WebSocket. Calls onTrade(symbol, price, volume, ms),
+      // onState(connecting | open | closed | off) and onError(message).
+      stream(onTrade, onState, onError) {
         if (!wsUrl || typeof WebSocket === 'undefined') { onState('off'); return { set() {}, close() {} }; }
         let sock = null, retry = 0, closed = false;
         const subs = new Set();
@@ -125,7 +126,8 @@
           sock.onmessage = e => {
             let m;
             try { m = JSON.parse(e.data); } catch (err) { return; }
-            if (m.type === 'trade' && Array.isArray(m.data)) m.data.forEach(t => onTrade(t.s, +t.p, +t.v || 0, +t.t));
+            if (m.type === 'trade' && Array.isArray(m.data)) m.data.forEach(t => onTrade(String(t.s), +t.p, +t.v || 0, +t.t));
+            else if (m.type === 'error' && onError) onError(String(m.msg || 'Finnhub stream error'));
           };
           sock.onclose = () => {
             onState('closed');

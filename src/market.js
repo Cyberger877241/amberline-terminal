@@ -14,8 +14,10 @@
   const etParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' });
   const etDay = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
   const utcDay = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
-  const utcMon = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', year: '2-digit' });
   const pad = n => String(n).padStart(2, '0');
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Long charts label months, adding the year only in January: "Nov", "Dec", "Jan '26".
+  const monthLabel = (m, y) => (m === 0 ? "Jan '" + String(y).slice(2) : MONTHS[m]);
   const hhmm = min => pad(Math.floor(min / 60) % 24) + ':' + pad(Math.floor(min % 60));
 
   function readKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
@@ -61,7 +63,6 @@
       D.order[type].forEach(s => { (g[I[s].group] = g[I[s].group] || []).push(s); });
       return Object.keys(g).map(label => ({ label, syms: g[label] }));
     };
-    let lastNewsId = -1;
     const newsItem = n => ({ id: n.id, t: n.t, when: hhmm(n.t), src: n.src, head: n.head, body: n.body, url: null, syms: n.syms, hot: n.hot, born: n.born });
     return {
       mode: 'demo',
@@ -71,7 +72,7 @@
         monitor: D.order.equity,
         world: byGroup('index'),
         cmdty: byGroup('cmdty'),
-        tape: ['AMX500', 'ATC100', 'NVTK', 'QSRV', 'PRSM', 'CDRW', 'ARDN', 'HLXB', 'EZ50', 'JP225', 'CL1', 'GC1', 'EURUSD', 'USDJPY', 'NBLA', 'SKYH', 'MRDN', 'VTRA']
+        tape: ['AMX500', 'ATC100', 'CRVN', 'QSRX', 'PZMR', 'CDMF', 'ADMR', 'HLVB', 'EZ50', 'JP225', 'CL1', 'GC1', 'EURUSD', 'USDJPY', 'NBLN', 'SKVN', 'MRWD', 'VNTL']
       },
       feed: () => ({ label: 'Simulated feed', state: 'demo' }),
       clock() {
@@ -88,13 +89,13 @@
         }
         const len = { '1M': 22, '3M': 63, '6M': 126, '1Y': 252 }[tf];
         const long = tf === '6M' || tf === '1Y';
-        const local = new Intl.DateTimeFormat('en-US', long ? { month: 'short', year: '2-digit' } : { month: 'short', day: 'numeric' });
+        const local = long ? { format: t => monthLabel(new Date(t).getMonth(), new Date(t).getFullYear()) } : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
         const dayLbl = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
         return Promise.resolve({
           kind: 'daily',
           series: () => i.daily.slice(Math.max(0, i.daily.length - len)),
           ma: () => ({ src: i.daily, off: Math.max(0, i.daily.length - len) }),
-          xlabel: b => local.format(b.t), tlabel: b => dayLbl.format(b.t)
+          xlabel: b => local.format(b.t), tlabel: b => dayLbl.format(b.t), monthly: long
         });
       },
       profile(sym) {
@@ -117,7 +118,7 @@
         });
       },
       news(sym) { return Promise.resolve(D.news.filter(n => !sym || n.syms.includes(sym)).slice(0, 60).map(newsItem)); },
-      newsChanged() { const id = D.news.length ? D.news[0].id : 0; const changed = id !== lastNewsId; lastNewsId = id; return changed; },
+      newsVersion: () => (D.news.length ? D.news[0].id : 0),
       story(id) { const n = D.news.find(x => String(x.id) === String(id)); return n ? newsItem(n) : null; },
       ticks: () => D.ticks(),
       watch() {},
@@ -128,14 +129,14 @@
 
   // ---------------------------------------------------------------- live
   // Market-wide views use US-listed ETFs as stand-ins, because Finnhub's free
-  // plan quotes US stocks and ETFs but not index levels, futures or FX rates.
+  // plan quotes US stocks and ETFs but not index levels, futures, spot FX or yields.
   const LIVE = {
     monitor: [['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['NVDA', 'NVIDIA'], ['AMZN', 'Amazon'], ['GOOGL', 'Alphabet Class A'],
       ['META', 'Meta Platforms'], ['TSLA', 'Tesla'], ['AVGO', 'Broadcom'], ['JPM', 'JPMorgan Chase'], ['V', 'Visa'],
       ['LLY', 'Eli Lilly'], ['UNH', 'UnitedHealth Group'], ['XOM', 'Exxon Mobil'], ['WMT', 'Walmart'], ['JNJ', 'Johnson & Johnson'],
       ['PG', 'Procter & Gamble'], ['KO', 'Coca-Cola'], ['NFLX', 'Netflix'], ['AMD', 'Advanced Micro Devices'], ['BA', 'Boeing']],
     world: [
-      ['Americas', [['SPY', 'S&P 500'], ['QQQ', 'Nasdaq-100'], ['DIA', 'Dow Jones Industrial Average'], ['IWM', 'Russell 2000'], ['EWC', 'Canada'], ['EWZ', 'Brazil'], ['EWW', 'Mexico']]],
+      ['Americas', [['SPY', 'S&P 500'], ['QQQ', 'Nasdaq-100'], ['DIA', 'Dow Jones 30'], ['IWM', 'Russell 2000'], ['EWC', 'Canada'], ['EWZ', 'Brazil'], ['EWW', 'Mexico']]],
       ['EMEA', [['EZU', 'Eurozone'], ['EWU', 'United Kingdom'], ['EWG', 'Germany'], ['EWQ', 'France'], ['EWL', 'Switzerland']]],
       ['Asia-Pacific', [['EWJ', 'Japan'], ['FXI', 'China large-cap'], ['EWH', 'Hong Kong'], ['EWA', 'Australia'], ['INDA', 'India'], ['EWY', 'South Korea']]]
     ],
@@ -145,58 +146,83 @@
       ['Agriculture', [['CORN', 'Corn'], ['WEAT', 'Wheat'], ['SOYB', 'Soybeans'], ['DBA', 'Agriculture basket']]]
     ],
     rates: [['BIL', '1–3 month T-bills', 0.2, '0–3M'], ['SHY', '1–3 year', 1.9, '1–3Y'], ['IEI', '3–7 year', 4.3, '3–7Y'], ['IEF', '7–10 year', 7.1, '7–10Y'], ['TLH', '10–20 year', 11.5, '10–20Y'], ['TLT', '20+ year', 16.5, '20Y+']],
-    fx: [['UUP', 'US dollar vs. major currencies'], ['FXE', 'Euro'], ['FXB', 'British pound'], ['FXY', 'Japanese yen'], ['FXF', 'Swiss franc'], ['FXC', 'Canadian dollar'], ['FXA', 'Australian dollar']],
+    fx: [['UUP', 'US dollar index'], ['FXE', 'Euro'], ['FXB', 'British pound'], ['FXY', 'Japanese yen'], ['FXF', 'Swiss franc'], ['FXC', 'Canadian dollar'], ['FXA', 'Australian dollar']],
     tape: ['SPY', 'QQQ', 'DIA', 'IWM', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'JPM', 'GLD', 'USO', 'TLT', 'UUP']
   };
 
   function liveMarket(fh, FinnhubError) {
-    const I = {};
+    const I = Object.create(null); // keyed by symbols from the network, so no prototype
     const listeners = [];
     const newsCache = new Map();
-    let visible = [], dirty = true, feedState = 'connecting', candlesAllowed = null, status = null, newsStamp = 0;
+    let visible = [], dirty = true, feedState = 'connecting', candlesAllowed = null, status = null;
 
     function mk(sym, name, type, group, extra) {
       if (!I[sym]) {
         I[sym] = Object.assign({
           sym, name, type, group, dec: 2, unit: 'USD',
           last: null, prevClose: null, open: null, high: null, low: null,
-          dir: '', quotedAt: 0, tradeAt: 0, ticks: [], series: {}, missing: false
+          dir: '', quotedAt: 0, dataAt: 0, tradeAt: 0, ticks: [], series: {}, missing: false
         }, extra || {});
       }
       return I[sym];
     }
     LIVE.monitor.forEach(([s, n]) => mk(s, n, 'equity', 'Large caps'));
-    LIVE.world.forEach(([g, list]) => list.forEach(([s, n]) => mk(s, n, 'etf', g, { proxy: n })));
-    LIVE.cmdty.forEach(([g, list]) => list.forEach(([s, n]) => mk(s, n, 'etf', g, { proxy: n })));
-    LIVE.rates.forEach(([s, n, dur, short]) => mk(s, n + ' Treasuries', 'etf', 'Treasuries', { proxy: n, duration: dur, short }));
-    LIVE.fx.forEach(([s, n]) => mk(s, n, 'etf', 'Currencies', { proxy: n }));
-    I.BIL.name = '1–3 month T-bills';
+    // Named "<market> ETF" so a chart of SPY never reads as the index level itself.
+    LIVE.world.forEach(([g, list]) => list.forEach(([s, n]) => mk(s, n + ' ETF', 'etf', g, { proxy: n })));
+    LIVE.cmdty.forEach(([g, list]) => list.forEach(([s, n]) => mk(s, n + ' ETF', 'etf', g, { proxy: n })));
+    LIVE.rates.forEach(([s, n, dur, short]) => mk(s, n + ' Treasury ETF', 'etf', 'Treasuries', { proxy: n, duration: dur, short }));
+    LIVE.fx.forEach(([s, n]) => mk(s, n + ' ETF', 'etf', 'Currencies', { proxy: n }));
+    I.BIL.name = '1–3 month T-bill ETF';
     const groups = list => list.map(([label, rows]) => ({ label, syms: rows.map(r => r[0]) }));
 
-    function pushTick(i, p, ms) {
-      const last = i.ticks[i.ticks.length - 1];
-      if (last && ms - last.t < 1000) { last.c = p; last.h = Math.max(last.h, p); last.l = Math.min(last.l, p); }
+    // Sessions are keyed by their New York trading date.
+    const etDate = ms => { const p = {}; etParts.formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; }); return p.year + '-' + p.month + '-' + p.day; };
+    const utcDate = ms => new Date(ms).toISOString().slice(0, 10);
+    const BAR = 5 * 60000;
+
+    // Fold one price into the chart series, starting a new bar when its time slot ends.
+    function mergePrice(i, p, ms) {
+      const day = etDate(ms);
+      const first = i.ticks[i.ticks.length - 1];
+      if (first && etDate(first.t) !== day) i.ticks = []; // the tick chart shows one session
+      const lt = i.ticks[i.ticks.length - 1];
+      if (lt && ms - lt.t < 1000) { lt.c = p; lt.h = Math.max(lt.h, p); lt.l = Math.min(lt.l, p); }
       else i.ticks.push({ t: ms, o: p, h: p, l: p, c: p, v: 0 });
       if (i.ticks.length > 3600) i.ticks.shift();
+
+      const intra = i.series['1D'];
+      const b = intra && intra[intra.length - 1];
+      if (b && etDate(b.t) === day && ms >= b.t) {
+        if (ms >= b.t + BAR) intra.push({ t: ms - (ms % BAR), o: p, h: p, l: p, c: p, v: 0 });
+        else { b.c = p; b.h = Math.max(b.h, p); b.l = Math.min(b.l, p); }
+      }
+      const daily = i.series.D;
+      const d = daily && daily[daily.length - 1];
+      if (d) {
+        const dd = utcDate(d.t);
+        if (dd === day) { d.c = p; d.h = Math.max(d.h, p); d.l = Math.min(d.l, p); }
+        else if (day > dd) daily.push({ t: Date.parse(day + 'T00:00:00Z'), o: p, h: p, l: p, c: p, v: 0 });
+      }
     }
 
     function applyQuote(i, q) {
       if (!q || (!q.c && !q.t)) { i.missing = true; return false; }
+      const qms = q.t * 1000;
       const prev = i.last;
+      const tradeNewer = i.tradeAt > qms;
       // A streamed trade is fresher than a quote that was cached before it arrived.
-      if (!(i.tradeAt && i.tradeAt > q.t * 1000)) {
+      if (!tradeNewer) {
         i.last = q.c;
         i.dir = prev == null || q.c === prev ? '' : q.c > prev ? 'up' : 'dn';
       }
-      i.prevClose = q.pc; i.open = q.o;
-      i.high = Math.max(q.h || 0, i.high || 0) || q.h; i.low = i.low ? Math.min(q.l, i.low) : q.l;
+      // Finnhub's high and low already cover the quote's session, so they replace ours.
+      i.prevClose = q.pc; i.open = q.o; i.high = q.h; i.low = q.l;
+      if (tradeNewer && etDate(i.tradeAt) === etDate(qms)) { i.high = Math.max(i.high, i.last); i.low = Math.min(i.low, i.last); }
+      i.session = etDate(qms);
+      i.dataAt = Math.max(qms, i.tradeAt || 0);
       i.quotedAt = Date.now();
       i.missing = false;
-      Object.values(i.series).forEach(sr => {
-        const b = sr[sr.length - 1];
-        if (b && !(i.tradeAt > q.t * 1000)) { b.c = i.last; b.h = Math.max(b.h, i.last); b.l = Math.min(b.l, i.last); }
-      });
-      if (!i.ticks.length) pushTick(i, i.last, q.t * 1000);
+      if (!tradeNewer) mergePrice(i, q.c, qms);
       dirty = true;
       return true;
     }
@@ -222,23 +248,19 @@
       });
     }
 
-    let stream = null;
+    let stream = null, streamError = null;
     function startStream() {
       stream = fh.stream((s, p, v, ms) => {
         const i = I[s];
-        if (!i || !(p > 0)) return;
+        if (!i || !(p > 0) || !(ms > 0)) return;
         i.dir = i.last == null || p === i.last ? i.dir : p > i.last ? 'up' : 'dn';
         i.last = p;
         i.tradeAt = ms;
-        if (i.high != null) i.high = Math.max(i.high, p);
-        if (i.low != null) i.low = Math.min(i.low, p);
-        pushTick(i, p, ms);
-        Object.values(i.series).forEach(sr => {
-          const b = sr[sr.length - 1];
-          if (b) { b.c = p; b.h = Math.max(b.h, p); b.l = Math.min(b.l, p); }
-        });
+        i.dataAt = Math.max(i.dataAt, ms);
+        if (i.session === etDate(ms) && i.high != null) { i.high = Math.max(i.high, p); i.low = Math.min(i.low, p); }
+        mergePrice(i, p, ms);
         dirty = true;
-      }, st => { feedState = st; dirty = true; });
+      }, st => { feedState = st; dirty = true; }, msg => { streamError = msg; dirty = true; });
     }
 
     function marketStatus() {
@@ -246,7 +268,7 @@
     }
     let market = null;
 
-    const fmtDaily = (long) => b => (long ? utcMon : utcDay).format(b.t);
+    const fmtDaily = long => (long ? b => monthLabel(new Date(b.t).getUTCMonth(), new Date(b.t).getUTCFullYear()) : b => utcDay.format(b.t));
     const SPANS = { '1M': 22, '3M': 63, '6M': 126, '1Y': 252 };
 
     const api = {
@@ -261,10 +283,12 @@
         tape: LIVE.tape
       },
       authError: () => (status && status.kind === 'auth' ? status : null),
+      streamError: () => streamError,
       requests: () => fh.budget(),
       candles: () => candlesAllowed,
       feed() {
-        const label = feedState === 'open' ? 'Finnhub · streaming' : feedState === 'connecting' ? 'Finnhub · connecting' : 'Finnhub · polling';
+        const src = api.mock ? 'Mock API' : 'Finnhub';
+        const label = src + (feedState === 'open' ? ' · streaming' : feedState === 'connecting' ? ' · connecting' : ' · polling');
         return { label, state: feedState === 'open' ? 'live' : 'poll' };
       },
       clock() {
@@ -288,7 +312,7 @@
           if (!q || (!q.c && !q.t)) throw new FinnhubError('notfound', `Finnhub has no quote for ${sym}. Check the ticker.`);
           const x = mk(sym, sym, 'equity', 'Search result');
           applyQuote(x, q);
-          if (x.name === sym) fh.profile(sym).then(p => { if (p && p.name) { x.name = p.name; dirty = true; } }, () => {});
+          if (x.name === sym) fh.profile(sym).then(p => { if (p && p.name) { x.name = String(p.name); dirty = true; } }, () => {});
           return x;
         });
       },
@@ -330,7 +354,7 @@
             kind: 'daily',
             series: () => bars.slice(Math.max(0, bars.length - len)),
             ma: () => ({ src: bars, off: Math.max(0, bars.length - len) }),
-            xlabel: fmtDaily(long), tlabel: fmtDaily(false)
+            xlabel: fmtDaily(long), tlabel: fmtDaily(false), monthly: long
           };
         }, err => {
           if (err.kind === 'premium') { candlesAllowed = false; return ticks(fallback); }
@@ -342,17 +366,17 @@
         return Promise.allSettled([fh.profile(sym), fh.metrics(sym), fh.peers(sym)]).then(([p, m, pe]) => {
           const P = p.status === 'fulfilled' && p.value ? p.value : {};
           const Mx = m.status === 'fulfilled' && m.value && m.value.metric ? m.value.metric : {};
-          if (P.name && !i.proxy) { i.name = P.name; dirty = true; }
+          if (P.name && !i.proxy) { i.name = String(P.name); dirty = true; }
           const pick = (...ks) => { for (const k of ks) if (Mx[k] != null && isFinite(Mx[k])) return +Mx[k]; return null; };
           const facts = [];
           if (i.proxy) facts.push(['Tracks', i.proxy + (i.duration ? ' · avg. duration ' + i.duration + ' yrs' : '')]);
-          if (P.exchange) facts.push(['Exchange', P.exchange]);
-          if (P.country) facts.push(['Country', P.country]);
-          if (P.ipo) facts.push(['Listed', P.ipo]);
+          if (P.exchange) facts.push(['Exchange', String(P.exchange)]);
+          if (P.country) facts.push(['Country', String(P.country)]);
+          if (P.ipo) facts.push(['Listed', String(P.ipo)]);
           const web = safeUrl(P.weburl);
           const failed = [p, m].filter(x => x.status === 'rejected').map(x => x.reason);
           return {
-            sector: P.finnhubIndustry || i.group,
+            sector: P.finnhubIndustry ? String(P.finnhubIndustry) : i.group,
             about: null,
             facts, web,
             stats: {
@@ -392,7 +416,7 @@
           return out.sort((a, b) => b.t - a.t);
         });
       },
-      newsChanged() { if (Date.now() - newsStamp > 4 * 60e3) { newsStamp = Date.now(); return true; } return false; },
+      newsVersion: () => Math.floor(Date.now() / (4 * 60e3)), // refetch headlines every 4 minutes
       story: id => newsCache.get(String(id)) || null,
       ticks: () => 0,
       watch(syms) {
@@ -422,6 +446,7 @@
     const fh = root.Finnhub.create(Object.assign({ key }, dev));
     market = liveMarket(fh, root.Finnhub.FinnhubError);
     market.endpoint = dev.api || root.Finnhub.DEFAULT_API;
+    market.mock = !!dev.api; // the local mock server serves made-up data
   } else {
     market = demoMarket(root.AmberlineData);
   }

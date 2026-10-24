@@ -3,7 +3,8 @@
  *
  * Every security, price, yield and headline here is fictional. Prices come from
  * a seeded random walk generated in the browser; nothing is fetched from a
- * market-data vendor. Any resemblance to a listed security is coincidental.
+ * market-data vendor. Company names are coined, and the tickers were checked
+ * against US listings in October 2026 so that none belongs to a real security.
  */
 (function (root) {
   'use strict';
@@ -46,26 +47,26 @@
   // ---------- the fictional universe ----------
   // sym, name, sector, price, annual vol, shares (bn), P/E, dividend %, beta, HQ, founded, employees, about
   const EQUITIES = [
-    ['NVTK', 'Novatek Systems', 'Semiconductors', 412.30, 0.42, 2.45, 38.4, 0.2, 1.45, 'San Jose, CA', 1994, 31200, 'Designs accelerator chips and interconnect for data-center AI training and inference.'],
-    ['QSRV', 'Quasar Cloud Services', 'Software', 238.75, 0.33, 1.12, 44.1, 0, 1.18, 'Seattle, WA', 2008, 18400, 'Sells usage-based cloud databases and observability tooling to enterprise developers.'],
-    ['HLXB', 'Helix Biologics', 'Biotechnology', 88.15, 0.55, 0.41, null, 0, 1.32, 'Cambridge, MA', 2011, 2900, 'Clinical-stage developer of antibody therapies for autoimmune disease, with two Phase III readouts due next year.'],
-    ['CDRW', 'Cedarwood Financial', 'Banks', 61.22, 0.24, 3.10, 11.2, 3.4, 1.05, 'Charlotte, NC', 1871, 64000, 'Regional bank holding company with commercial lending, wealth management and card businesses across 14 states.'],
-    ['KSTL', 'Keystone Steelworks', 'Materials', 33.48, 0.31, 0.88, 8.9, 2.1, 1.22, 'Pittsburgh, PA', 1902, 11800, 'Operates electric-arc furnace mills producing rebar, beams and flat-rolled steel.'],
-    ['BRMR', 'Bramble Retail', 'Consumer Retail', 127.90, 0.27, 0.65, 22.7, 1.3, 0.95, 'Columbus, OH', 1956, 142000, 'Runs 1,900 home-goods and grocery stores plus a same-day delivery marketplace.'],
-    ['VTRA', 'Vantra Energy', 'Oil & Gas', 74.60, 0.30, 1.95, 9.8, 4.2, 0.88, 'Houston, TX', 1978, 9600, 'Explores for and produces oil and natural gas in West Texas and offshore.'],
-    ['SOLW', 'Solwind Renewables', 'Renewable Power', 22.85, 0.48, 1.40, 31.5, 1.8, 1.10, 'Denver, CO', 2009, 4100, 'Develops and operates utility-scale solar and onshore wind farms under long-term power contracts.'],
-    ['ARDN', 'Arden Motors', 'Automobiles', 46.12, 0.38, 1.25, 7.4, 2.6, 1.35, 'Detroit, MI', 1921, 96000, 'Builds pickup trucks, SUVs and a growing line of battery-electric delivery vans.'],
-    ['PXLM', 'Pixelmint Games', 'Interactive Media', 59.40, 0.45, 0.52, 27.9, 0, 1.25, 'Los Angeles, CA', 2004, 7300, 'Publishes live-service console and mobile games with in-game marketplaces.'],
-    ['MRDN', 'Meridian Pharma', 'Pharmaceuticals', 142.05, 0.22, 2.30, 16.3, 2.9, 0.62, 'Princeton, NJ', 1932, 58000, 'Markets cardiology and oncology drugs worldwide and has a late-stage obesity pipeline.'],
-    ['TLHW', 'Tallhaven REIT', 'Real Estate', 38.77, 0.20, 0.71, 19.4, 5.6, 0.80, 'Chicago, IL', 1997, 1100, 'Owns logistics warehouses and cold-storage facilities near major ports.'],
-    ['FRSG', 'Frostgate Foods', 'Consumer Staples', 52.34, 0.16, 0.94, 18.0, 3.1, 0.48, 'Minneapolis, MN', 1888, 38000, 'Makes frozen meals, cereals and snack brands sold through grocery and club stores.'],
-    ['SKYH', 'Skyhook Airlines', 'Airlines', 18.62, 0.44, 0.62, 6.1, 0, 1.55, 'Dallas, TX', 1984, 41000, 'Low-cost carrier flying 420 routes across North and Central America.'],
-    ['OCNL', 'Ocelan Telecom', 'Telecommunications', 29.10, 0.19, 4.20, 10.6, 6.3, 0.55, 'Atlanta, GA', 1983, 77000, 'Provides wireless, fiber broadband and enterprise network services.'],
-    ['GRNT', 'Granite Insurance Group', 'Insurance', 96.48, 0.21, 0.58, 12.8, 2.2, 0.74, 'Hartford, CT', 1849, 26000, 'Writes property, casualty and specialty commercial insurance.'],
-    ['AXMR', 'Axiomar Defense', 'Aerospace & Defense', 205.60, 0.23, 0.27, 20.5, 1.7, 0.69, 'Arlington, VA', 1958, 52000, 'Supplies radar, missile-defense and satellite systems to government customers.'],
-    ['CLRW', 'Clearwater Utilities', 'Utilities', 71.30, 0.14, 0.49, 17.2, 3.8, 0.41, 'Phoenix, AZ', 1912, 6200, 'Regulated electric and water utility serving 2.3 million customers in the Southwest.'],
-    ['NBLA', 'Nebula Robotics', 'Industrial Machinery', 113.85, 0.50, 0.33, 52.6, 0, 1.62, 'Pittsburgh, PA', 2015, 3800, 'Builds autonomous mobile robots and vision software for warehouses and factories.'],
-    ['PRSM', 'Prism Payments', 'Fintech', 167.20, 0.36, 0.79, 29.3, 0.4, 1.28, 'New York, NY', 2010, 12500, 'Processes card and real-time payments for online merchants in 40 countries.']
+    ['CRVN', 'Corvane Semiconductor', 'Semiconductors', 412.30, 0.42, 2.45, 38.4, 0.2, 1.45, 'San Jose, CA', 1994, 31200, 'Designs accelerator chips and interconnect for data-center AI training and inference.'],
+    ['QSRX', 'Quasarix Cloud', 'Software', 238.75, 0.33, 1.12, 44.1, 0, 1.18, 'Seattle, WA', 2008, 18400, 'Sells usage-based cloud databases and observability tooling to enterprise developers.'],
+    ['HLVB', 'Helvane Biologics', 'Biotechnology', 88.15, 0.55, 0.41, null, 0, 1.32, 'Cambridge, MA', 2011, 2900, 'Clinical-stage developer of antibody therapies for autoimmune disease, with two Phase III readouts due next year.'],
+    ['CDMF', 'Cedarmont Financial', 'Banks', 61.22, 0.24, 3.10, 11.2, 3.4, 1.05, 'Charlotte, NC', 1871, 64000, 'Regional bank holding company with commercial lending, wealth management and card businesses across 14 states.'],
+    ['KSTW', 'Keystrel Steelworks', 'Materials', 33.48, 0.31, 0.88, 8.9, 2.1, 1.22, 'Pittsburgh, PA', 1902, 11800, 'Operates electric-arc furnace mills producing rebar, beams and flat-rolled steel.'],
+    ['BRWK', 'Bramblewick Retail', 'Consumer Retail', 127.90, 0.27, 0.65, 22.7, 1.3, 0.95, 'Columbus, OH', 1956, 142000, 'Runs 1,900 home-goods and grocery stores plus a same-day delivery marketplace.'],
+    ['VNTL', 'Vantrel Energy', 'Oil & Gas', 74.60, 0.30, 1.95, 9.8, 4.2, 0.88, 'Houston, TX', 1978, 9600, 'Explores for and produces oil and natural gas in West Texas and offshore.'],
+    ['SLWN', 'Solwyn Renewables', 'Renewable Power', 22.85, 0.48, 1.40, 31.5, 1.8, 1.10, 'Denver, CO', 2009, 4100, 'Develops and operates utility-scale solar and onshore wind farms under long-term power contracts.'],
+    ['ADMR', 'Ardmoor Motors', 'Automobiles', 46.12, 0.38, 1.25, 7.4, 2.6, 1.35, 'Detroit, MI', 1921, 96000, 'Builds pickup trucks, SUVs and a growing line of battery-electric delivery vans.'],
+    ['PXMT', 'Pixelmint Games', 'Interactive Media', 59.40, 0.45, 0.52, 27.9, 0, 1.25, 'Los Angeles, CA', 2004, 7300, 'Publishes live-service console and mobile games with in-game marketplaces.'],
+    ['MRWD', 'Merrowdale Pharma', 'Pharmaceuticals', 142.05, 0.22, 2.30, 16.3, 2.9, 0.62, 'Princeton, NJ', 1932, 58000, 'Markets cardiology and oncology drugs worldwide and has a late-stage obesity pipeline.'],
+    ['TLHV', 'Tallhaven REIT', 'Real Estate', 38.77, 0.20, 0.71, 19.4, 5.6, 0.80, 'Chicago, IL', 1997, 1100, 'Owns logistics warehouses and cold-storage facilities near major ports.'],
+    ['FRGL', 'Frostgale Foods', 'Consumer Staples', 52.34, 0.16, 0.94, 18.0, 3.1, 0.48, 'Minneapolis, MN', 1888, 38000, 'Makes frozen meals, cereals and snack brands sold through grocery and club stores.'],
+    ['SKVN', 'Skyvane Airlines', 'Airlines', 18.62, 0.44, 0.62, 6.1, 0, 1.55, 'Dallas, TX', 1984, 41000, 'Low-cost carrier flying 420 routes across North and Central America.'],
+    ['OCVL', 'Ocelvane Telecom', 'Telecommunications', 29.10, 0.19, 4.20, 10.6, 6.3, 0.55, 'Atlanta, GA', 1983, 77000, 'Provides wireless, fiber broadband and enterprise network services.'],
+    ['GRMR', 'Granmere Insurance Group', 'Insurance', 96.48, 0.21, 0.58, 12.8, 2.2, 0.74, 'Hartford, CT', 1849, 26000, 'Writes property, casualty and specialty commercial insurance.'],
+    ['AXMD', 'Axiomar Defense', 'Aerospace & Defense', 205.60, 0.23, 0.27, 20.5, 1.7, 0.69, 'Arlington, VA', 1958, 52000, 'Supplies radar, missile-defense and satellite systems to government customers.'],
+    ['CBKU', 'Clearbrook Utilities', 'Utilities', 71.30, 0.14, 0.49, 17.2, 3.8, 0.41, 'Phoenix, AZ', 1912, 6200, 'Regulated electric and water utility serving 2.3 million customers in the Southwest.'],
+    ['NBLN', 'Nebulon Robotics', 'Industrial Machinery', 113.85, 0.50, 0.33, 52.6, 0, 1.62, 'Pittsburgh, PA', 2015, 3800, 'Builds autonomous mobile robots and vision software for warehouses and factories.'],
+    ['PZMR', 'Prizmara Payments', 'Fintech', 167.20, 0.36, 0.79, 29.3, 0.4, 1.28, 'New York, NY', 2010, 12500, 'Processes card and real-time payments for online merchants in 40 countries.']
   ];
 
   // sym, name, region, level, annual vol
@@ -266,9 +267,9 @@
       [`Crude ${up ? 'gains' : 'slips'} as weekly inventories ${up ? 'fall' : 'build'} more than forecast`, ['CL1', 'CO1']],
       [`Gold holds near $${Math.round(inst.GC1.last)} an ounce as the dollar ${up ? 'eases' : 'firms'}`, ['GC1']],
       [`Factory orders survey ${up ? 'beats' : 'misses'} estimates for a third straight month`, ['AIN30']],
-      [`Container shipping rates fall 8% week over week as port congestion eases`, ['TLHW']],
+      [`Container shipping rates fall 8% week over week as port congestion eases`, ['TLHV']],
       [`Yen ${up ? 'strengthens' : 'weakens'} past ${Math.round(inst.USDJPY.last)} per dollar in late trading`, ['USDJPY']],
-      [`Chipmakers lead tech index ${up ? 'higher' : 'lower'} on data-center spending outlook`, ['ATC100', 'NVTK']]
+      [`Chipmakers lead tech index ${up ? 'higher' : 'lower'} on data-center spending outlook`, ['ATC100', 'CRVN']]
     ];
     const [head, syms] = pick(r, heads);
     return mk(t, pick(r, ['AMW', 'ECO']), head, syms, null);

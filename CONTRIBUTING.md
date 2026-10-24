@@ -5,7 +5,7 @@ Thanks for helping. Amberline is plain HTML, CSS and JavaScript, so you don't ne
 ## Run it
 
 ```bash
-python -m http.server 8000
+python -m http.server 8000 --bind 127.0.0.1
 ```
 
 Open <http://localhost:8000> and edit files in `src/`. Reload the page to see changes.
@@ -42,7 +42,8 @@ Then visit `http://localhost:8000/?api=http://localhost:8766/api/v1&ws=off` and 
 - Keep the demo market fictional. Real companies belong only in live mode, with data fetched at runtime.
 - Never commit API keys or downloaded market data.
 - Insert anything that comes from an API with `textContent` or `esc()`, never as raw HTML.
-- Don't use other vendors' logos, product names or screen designs.
+- Don't use other vendors' logos or branding, and keep the non-affiliation notice when you mention them.
+- New demo tickers must not belong to a real listed company. Check them against a US symbol list first.
 - Update only the cells that changed in `tick()`, not the whole panel.
 - Check the page at phone width (about 375px). The page itself must never scroll sideways.
 - Keep it dependency-free unless a library does substantial work.

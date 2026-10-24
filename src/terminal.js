@@ -130,11 +130,20 @@
       ctx.fillText(fmt(v, axDec), padL + plotW + 8, yy);
     }
 
-    // time axis
-    const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 84))));
+    // time axis: evenly spaced, or one label per month on long daily charts
+    const maxLabels = Math.max(2, Math.floor(plotW / 84));
+    let marks = [];
+    if (o.monthly) {
+      for (let k = 1; k < n; k++) if (o.xlabel(bars[k]) !== o.xlabel(bars[k - 1])) marks.push(k);
+      const thin = Math.ceil(marks.length / maxLabels);
+      marks = marks.filter((_, j) => j % thin === 0);
+    } else {
+      const every = Math.max(1, Math.ceil(n / maxLabels));
+      for (let k = 0; k < n; k += every) marks.push(k);
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    for (let k = 0; k < n; k += every) {
+    for (const k of marks) {
       const xx = Math.round(x(k)) + 0.5;
       ctx.strokeStyle = C.grid;
       vline(ctx, xx, padT, padT + plotH);
@@ -288,21 +297,22 @@
     bar: { k: 'bar', label: '', html: 1, dir: 1, get: i => pctBar(chgPct(i)) },
     y1: { k: 'y1', label: '1Y %', num: 1, dirOf: i => i.last - i.daily[0].c, get: i => pctStr((i.last / i.daily[0].c - 1) * 100) },
     vol: { k: 'vol', label: 'Volume', num: 1, get: i => big(M.day(i).v) },
-    rng: { k: 'rng', label: 'Day range', num: 1, cls: 'muted', get: i => { const d = M.day(i); return fmt(d.l, i.dec) + ' – ' + fmt(d.h, i.dec); } },
+    rng: { k: 'rng', label: 'Day range', num: 1, cls: 'muted', opt: 1, get: i => { const d = M.day(i); return fmt(d.l, i.dec) + ' – ' + fmt(d.h, i.dec); } },
     unit: { k: 'unit', label: 'Unit', cls: 'muted', get: i => i.unit },
-    ba: { k: 'ba', label: 'Bid × Ask', num: 1, cls: 'muted', get: i => { const s = Math.max(0.01, i.last * 0.00015); return fmt(i.last - s, i.dec) + ' × ' + fmt(i.last + s, i.dec); } },
-    spark: { k: 'spark', label: 'Today', html: 1, dir: 1, get: i => sparkSVG((i.intra || i.ticks).map(b => b.c)) },
-    upd: { k: 'upd', label: 'Updated', num: 1, cls: 'muted', get: i => (i.tradeAt || i.quotedAt ? timeAgo(Math.max(i.tradeAt || 0, i.quotedAt || 0)) : 'loading') }
+    ba: { k: 'ba', label: 'Bid × Ask', num: 1, cls: 'muted', opt: 1, get: i => { const s = Math.max(0.01, i.last * 0.00015); return fmt(i.last - s, i.dec) + ' × ' + fmt(i.last + s, i.dec); } },
+    spark: { k: 'spark', label: 'Today', html: 1, dir: 1, opt: 1, get: i => sparkSVG((i.intra || i.ticks).map(b => b.c)) },
+    upd: { k: 'upd', label: 'As of', num: 1, cls: 'muted', opt: 1, get: i => (i.dataAt ? timeAgo(i.dataAt) : i.missing ? 'no quote' : 'loading') }
   };
   function timeAgo(ms) {
     const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-    return s < 5 ? 'now' : s < 60 ? s + 's ago' : s < 3600 ? Math.floor(s / 60) + 'm ago' : Math.floor(s / 3600) + 'h ago';
+    return s < 5 ? 'now' : s < 60 ? s + 's ago' : s < 3600 ? Math.floor(s / 60) + 'm ago' : s < 86400 ? Math.floor(s / 3600) + 'h ago' : Math.floor(s / 86400) + 'd ago';
   }
 
   function quoteTable(host, groups, cols, onRow) {
-    host.innerHTML = `<table class="qt"><thead><tr>${cols.map(c => `<th class="${c.num ? 'num' : ''}" scope="col">${c.label}</th>`).join('')}</tr></thead>` +
+    const cls = c => [c.cls, c.num && 'num', c.opt && 'opt'].filter(Boolean).join(' ');
+    host.innerHTML = `<table class="qt"><thead><tr>${cols.map(c => `<th class="${[c.num && 'num', c.opt && 'opt'].filter(Boolean).join(' ')}" scope="col">${c.label}</th>`).join('')}</tr></thead>` +
       groups.map(g => `<tbody>${g.label ? `<tr class="grp"><th colspan="${cols.length}" scope="rowgroup">${esc(g.label)}</th></tr>` : ''}` +
-        g.syms.map(s => `<tr data-sym="${esc(s)}" tabindex="0">${cols.map(c => `<td class="${[c.cls, c.num && 'num'].filter(Boolean).join(' ')}"></td>`).join('')}</tr>`).join('') +
+        g.syms.map(s => `<tr data-sym="${esc(s)}" tabindex="0">${cols.map(c => `<td class="${cls(c)}"></td>`).join('')}</tr>`).join('') +
         '</tbody>').join('') + '</table>';
     const rows = [...host.querySelectorAll('tr[data-sym]')].map(tr => ({ inst: I[tr.dataset.sym], cells: [...tr.children] }));
     function update(first) {
@@ -328,11 +338,11 @@
   }
 
   // ---------- functions ----------
-  const FN = {};
+  const FN = Object.create(null);
   const TFS = ['1D', '1M', '3M', '6M', '1Y'];
 
   FN.GP = {
-    name: 'Price Graph', sec: 'req', example: LIVE ? 'AAPL GP 6M' : 'NVTK GP 6M',
+    name: 'Price Graph', sec: 'req', example: LIVE ? 'AAPL GP 6M' : 'CRVN GP 6M',
     help: 'Candlestick or line chart with volume and 20/50-day moving averages. Add 1D, 1M, 3M, 6M or 1Y.',
     mount(p, s) {
       const i = I[s.sym];
@@ -355,10 +365,15 @@
       const qLast = p.body.querySelector('.q-last'), qChg = p.body.querySelector('.q-chg');
       let hover = null, geo = null, sr = null, req = 0, dead = false;
 
-      const syncSeg = () => p.body.querySelectorAll('.seg').forEach(g => g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s[g.dataset.k]))));
+      const syncSeg = () => p.body.querySelectorAll('.seg').forEach(g => g.querySelectorAll('button').forEach(b => {
+        b.setAttribute('aria-pressed', String(b.dataset.v === s[g.dataset.k]));
+        const noHistory = LIVE && M.candles() === false && g.dataset.k === 'tf' && b.dataset.v !== '1D';
+        b.disabled = noHistory;
+        b.title = noHistory ? 'Needs historical candles, which your Finnhub plan does not include' : '';
+      }));
       p.body.querySelectorAll('.seg').forEach(g => g.addEventListener('click', e => {
         const b = e.target.closest('button');
-        if (!b) return;
+        if (!b || b.disabled) return;
         const k = g.dataset.k;
         s[k] = b.dataset.v;
         hover = null;
@@ -376,6 +391,8 @@
         M.bars(s.sym, s.tf).then(r => {
           if (dead || my !== req) return;
           sr = r;
+          if (r.kind === 'ticks' && s.tf !== '1D') { s.tf = '1D'; save(); }
+          syncSeg();
           note.hidden = !r.note;
           note.textContent = r.note || '';
           draw();
@@ -400,7 +417,7 @@
         const ma = sr.ma ? sr.ma() : null;
         geo = drawChart(cv, bars, {
           style: sr.kind === 'ticks' ? 'line' : s.style, dec: i.dec, vol: true, hover,
-          ref: sr.ref ? sr.ref() : null, ma, xlabel: sr.xlabel
+          ref: sr.ref ? sr.ref() : null, ma, xlabel: sr.xlabel, monthly: sr.monthly
         });
         const b = bars[hover != null ? hover : bars.length - 1];
         legend.innerHTML = `<span class="lt">${esc(sr.tlabel(b))}</span>` +
@@ -429,7 +446,7 @@
   };
 
   FN.DES = {
-    name: 'Description', sec: 'req', example: LIVE ? 'MSFT DES' : 'PRSM DES',
+    name: 'Description', sec: 'req', example: LIVE ? 'MSFT DES' : 'PZMR DES',
     help: 'Company profile, key statistics, 52-week range and peers.',
     mount(p, s) {
       const i = I[s.sym];
@@ -510,7 +527,7 @@
           last: fmt(i.last, i.dec), chg: ok(chg(i)) ? signed(chg(i), i.dec) + ' (' + pctStr(chgPct(i)) + ')' : '—',
           open: fmt(d.o, i.dec), pc: fmt(i.prevClose, i.dec), rng: fmt(d.l, i.dec) + ' – ' + fmt(d.h, i.dec),
           cap: !st ? pending : ok(S('cap')) ? '$' + big(S('cap')) : '—',
-          pe: !st ? pending : ok(S('pe')) && S('pe') > 0 ? fmt(S('pe'), 1) + '×' : 'n/m',
+          pe: !st ? pending : !ok(S('pe')) ? '—' : S('pe') > 0 ? fmt(S('pe'), 1) + '×' : 'n/m (loss)',
           eps: !st ? pending : ok(S('eps')) ? '$' + fmt(S('eps'), 2) : '—',
           div: !st ? pending : ok(S('div')) ? (S('div') ? fmt(S('div'), 2) + '%' : 'None') : '—',
           sh: !st ? pending : big(S('sh')), beta: !st ? pending : fmt(S('beta'), 2),
@@ -529,12 +546,12 @@
     }
   };
 
-  function tableFn(name, help, groupsFn, colsFn, row) {
+  function tableFn(name, help, groupsFn, colsFn, row, liveNote) {
     return {
       name, help, sec: 'none',
       mount(p) {
         const groups = groupsFn();
-        p.body.innerHTML = '<div class="tbl-wrap"></div>' + (LIVE && name !== 'Equity Monitor' ? '<p class="tbl-note">US-listed ETFs stand in for each market, because Finnhub\'s free plan doesn\'t quote index levels or futures.</p>' : '');
+        p.body.innerHTML = '<div class="tbl-wrap"></div>' + (LIVE && liveNote ? `<p class="tbl-note">${liveNote}</p>` : '');
         const update = quoteTable(p.body.firstChild, groups, colsFn(), sym => open(p, row(sym), sym));
         return { syms: () => groups.flatMap(g => g.syms), tick: () => update(false) };
       }
@@ -543,10 +560,12 @@
 
   FN.WEI = tableFn('World Equity Indices', LIVE ? 'Country and benchmark ETFs by region, as stand-ins for index levels.' : 'Benchmark indices by region with net and percent change.',
     () => M.universe.world,
-    () => (LIVE ? [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.rng] : [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.y1]), () => 'GP');
+    () => (LIVE ? [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.rng] : [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.y1]), () => 'GP',
+    'Prices are for US-listed ETFs that track each market, not index levels. Finnhub\'s free plan doesn\'t include index levels.');
   FN.CMDTY = tableFn('Commodities', LIVE ? 'Energy, metals and agriculture through the ETFs that track them.' : 'Front-month energy, metals and agriculture futures with quote units.',
     () => M.universe.cmdty,
-    () => (LIVE ? [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.upd] : [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.unit]), () => 'GP');
+    () => (LIVE ? [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.upd] : [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.unit]), () => 'GP',
+    'Prices are for US-listed ETFs that hold each commodity or its futures, not futures prices. Finnhub\'s free plan doesn\'t include futures.');
   FN.MON = tableFn('Equity Monitor', LIVE ? 'Twenty US large caps with day range, an intraday line and how fresh each quote is.' : 'Every equity in the universe with bid and ask, volume and an intraday sparkline.',
     () => [{ label: null, syms: M.universe.monitor }],
     () => (LIVE ? [COL.sym, COL.name, COL.last, COL.chg, COL.pct, COL.rng, COL.spark, COL.upd] : [COL.sym, COL.name, COL.last, COL.chg, COL.pct, COL.ba, COL.vol, COL.spark]), () => 'DES');
@@ -566,11 +585,15 @@
         p.body.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.tab)));
         const all = M.universe.monitor.map(x => I[x]).filter(x => ok(chgPct(x)));
         const sorted = s.tab === 'active' ? all.sort((a, b) => M.day(b).v * b.last - M.day(a).v * a.last)
-          : all.sort((a, b) => (s.tab === 'gainers' ? 1 : -1) * (chgPct(b) - chgPct(a)));
+          : all.filter(x => (s.tab === 'gainers' ? chgPct(x) > 0 : chgPct(x) < 0)).sort((a, b) => (s.tab === 'gainers' ? 1 : -1) * (chgPct(b) - chgPct(a)));
         const fresh = host.cloneNode(false);
         host.replaceWith(fresh);
         host = fresh;
-        if (!sorted.length) { notice(host, 'Waiting for quotes…'); update = () => {}; return; }
+        if (!sorted.length) {
+          notice(host, !all.length ? 'Waiting for quotes…' : s.tab === 'gainers' ? 'Nothing in the monitor is up today.' : 'Nothing in the monitor is down today.');
+          update = () => {};
+          return;
+        }
         update = quoteTable(host, [{ label: null, syms: sorted.slice(0, 12).map(x => x.sym) }], cols, sym => open(p, 'DES', sym));
       }
       p.body.querySelector('.seg').addEventListener('click', e => {
@@ -587,7 +610,8 @@
   };
 
   FN.FXC = LIVE ? tableFn('Currencies', 'Currency ETFs against the US dollar. Finnhub\'s free plan doesn\'t include spot FX rates.',
-    () => [{ label: 'Currency ETFs', syms: M.universe.fx }], () => [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.rng], () => 'GP') : {
+    () => [{ label: 'Currency ETFs', syms: M.universe.fx }], () => [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.rng], () => 'GP',
+    'Prices are for currency ETFs in US dollars, not exchange rates. Finnhub\'s free plan doesn\'t include spot FX rates.') : {
     name: 'Currency Matrix', sec: 'none', example: 'FXC',
     help: 'Cross rates for eight major currencies. Each cell is one unit of the row currency priced in the column currency.',
     mount(p) {
@@ -743,10 +767,15 @@
     let dead = false, loading = false;
     function render(items) {
       const t = M.ticks();
+      const focused = ol.contains(document.activeElement) ? document.activeElement.dataset.id : null;
       ol.removeAttribute('aria-busy');
-      ol.innerHTML = items.map(n => `<li data-id="${esc(n.id)}" tabindex="0" class="${n.hot ? 'hot' : ''} ${n.born && t - n.born < 3 ? 'new' : ''}">
+      ol.innerHTML = items.map(n => `<li data-id="${esc(n.id)}" tabindex="0" role="button" class="${n.hot ? 'hot' : ''} ${n.born && t - n.born < 3 ? 'new' : ''}">
           <time>${esc(n.when)}</time><span class="src" title="${esc(n.src)}">${esc(n.src)}</span><span class="head">${esc(n.head)}</span><span class="tk">${esc(n.syms.join(' '))}</span></li>`).join('') ||
         `<li class="empty">${sym ? `No ${esc(sym)} headlines in the last week.` : 'No headlines right now.'}</li>`;
+      if (focused) {
+        const again = [...ol.children].find(li => li.dataset.id === focused);
+        if (again) again.focus();
+      }
     }
     function fetchNews() {
       if (loading) return;
@@ -757,13 +786,13 @@
     const openStory = li => li && li.dataset.id && load(p, { fn: 'STORY', id: li.dataset.id, sym: sym || null });
     ol.addEventListener('click', e => openStory(e.target.closest('li')));
     ol.addEventListener('keydown', e => { if (e.key === 'Enter') openStory(e.target.closest('li')); });
-    M.newsChanged();
+    let seen = M.newsVersion();
     fetchNews();
-    return { syms: () => (sym ? [sym] : []), tick() { if (M.newsChanged()) fetchNews(); }, destroy() { dead = true; } };
+    return { syms: () => (sym ? [sym] : []), tick() { const v = M.newsVersion(); if (v !== seen) { seen = v; fetchNews(); } }, destroy() { dead = true; } };
   }
 
   FN.TOP = { name: 'Top News', sec: 'none', example: 'TOP', help: LIVE ? 'Market headlines from Finnhub, newest first. Select one to read the summary.' : 'Headlines across the market, newest first. Select one to read it.', mount: p => newsMount(p, null) };
-  FN.NEWS = { name: 'Company News', sec: 'req', example: LIVE ? 'NVDA NEWS' : 'NVTK NEWS', help: LIVE ? 'Headlines about one company from the last seven days.' : 'Headlines that mention one security.', mount: (p, s) => newsMount(p, s.sym) };
+  FN.NEWS = { name: 'Company News', sec: 'req', example: LIVE ? 'NVDA NEWS' : 'CRVN NEWS', help: LIVE ? 'Headlines about one company from the last seven days.' : 'Headlines that mention one security.', mount: (p, s) => newsMount(p, s.sym) };
   FN.STORY = {
     name: 'Story', sec: 'none', hidden: true,
     mount(p, s) {
@@ -798,8 +827,10 @@
       p.body.innerHTML = `
         <div class="help keypage">
           <section>
-            <h3>${live ? 'Connected to Finnhub' : 'Demo mode'}</h3>
-            <p>${live
+            <h3>${!live ? 'Demo mode' : M.mock ? 'Connected to the local mock API' : 'Connected to Finnhub'}</h3>
+            <p>${live && M.mock
+              ? 'This page is using the mock server on localhost. Every price, name and headline it serves is made up for testing.'
+              : live
               ? 'Quotes, company profiles and headlines come from Finnhub using the key saved in this browser. Prices stream in during market hours and quotes refresh about once a minute.'
               : 'Right now every company, price and headline is fictional. To see real US stocks, ETFs and news, add your own Finnhub API key. A free key takes a minute to get.'}</p>
           </section>
@@ -821,7 +852,8 @@
               </div>
               <p class="keymsg" role="status"></p>
             </form>
-            <p class="fine">Your key is stored only in this browser's local storage and is sent only to Finnhub. Anyone using this computer and browser profile can see it, so remove it on shared machines. Finnhub's free plan is for personal use; check its terms before showing live data in public.</p>
+            <p class="fine">Your key is stored in this browser's local storage and is sent only to Finnhub. Anyone using this browser profile, and any other page on this site's address, can read it, so remove it on shared machines.</p>
+            <p class="fine"><b>Sharing:</b> Finnhub's terms limit its plans to personal use and forbid sharing its data, or results derived from it, with anyone without Finnhub's written approval. Use demo mode for presentations, screenshots and recordings. See <a href="https://finnhub.io/terms-of-service" target="_blank" rel="noopener noreferrer">Finnhub's terms</a>.</p>
           </section>
         </div>`;
       const form = p.body.querySelector('form');
@@ -842,7 +874,8 @@
         if (!live) return;
         const f = M.feed(), r = M.requests(), c = M.candles(), a = M.authError();
         const set = (k, t) => { const el = p.body.querySelector(`[data-k="${k}"]`); if (el) el.textContent = t; };
-        set('feed', f.state === 'live' ? 'Streaming live trades' : 'Polling quotes about once a minute (no live stream)');
+        const se = M.streamError();
+        set('feed', (f.state === 'live' ? 'Streaming live trades' : 'Polling quotes about once a minute (no live stream)') + (se ? ' · stream says: ' + se : ''));
         set('req', `${r.used} of ${r.perMinute} this minute${r.queued ? ', ' + r.queued + ' waiting' : ''}`);
         set('candles', c === true ? 'Included in your plan' : c === false ? 'Not in your plan; charts show live trades instead' : 'Not checked yet');
         set('auth', a ? a.message : 'Accepted');
@@ -857,7 +890,7 @@
     help: 'This page: functions, syntax and keyboard shortcuts.',
     mount(p) {
       const fns = Object.keys(FN).filter(k => !FN[k].hidden);
-      const ex = LIVE ? 'AAPL GP' : 'NVTK GP';
+      const ex = LIVE ? 'AAPL GP' : 'CRVN GP';
       p.body.innerHTML = `
         <div class="help">
           <section>
@@ -886,8 +919,8 @@
           <section>
             <h3>About the data</h3>
             <p>${LIVE
-              ? 'Quotes, profiles, statistics and headlines come from Finnhub through your own API key. Market-wide views use US-listed ETFs as stand-ins for indices, commodities, currencies and Treasuries. Data may be delayed or incomplete. Nothing here is investment advice.'
-              : 'Demo mode: every company, index name, price, yield and headline is fictional and generated in your browser. Type <b>KEY</b> to connect real data with a free Finnhub key.'}
+              ? 'Quotes, profiles, statistics and headlines come from Finnhub through your own API key. Market-wide views use US-listed ETFs as stand-ins for indices, commodities, currencies and Treasuries. Data may be delayed or incomplete. Nothing here is investment advice. Finnhub\'s terms limit its plans to personal use and forbid sharing its data, or results derived from it, with anyone without Finnhub\'s written approval. Use demo mode for presentations, screenshots and recordings.'
+              : 'Demo mode: the companies, tickers, index names and headlines are fictional, and every price and yield is simulated in your browser. Commodity and currency names are real instruments with made-up prices. Type <b>KEY</b> to connect real data with a free Finnhub key.'}
               Amberline is an independent project and is not affiliated with Bloomberg L.P., Finnhub or any exchange.</p>
           </section>
         </div>`;
@@ -898,13 +931,13 @@
     }
   };
 
-  const ALIAS = { G: 'GP', CHART: 'GP', N: 'NEWS', FX: 'FXC', ACT: 'MOST', MOVERS: 'MOST', YC: 'CRV', TSY: 'CRV', CMD: 'CMDTY', W: 'MON', '?': 'HELP', INDEX: 'WEI', NI: 'NEWS', API: 'KEY', LIVE: 'KEY', DEMO: 'KEY' };
+  const ALIAS = Object.assign(Object.create(null), { G: 'GP', CHART: 'GP', N: 'NEWS', FX: 'FXC', ACT: 'MOST', MOVERS: 'MOST', YC: 'CRV', TSY: 'CRV', CMD: 'CMDTY', W: 'MON', '?': 'HELP', INDEX: 'WEI', NI: 'NEWS', API: 'KEY', LIVE: 'KEY', DEMO: 'KEY' });
 
   // ---------- panels ----------
   const grid = document.getElementById('grid');
   const DEFAULT = LIVE
     ? [{ fn: 'GP', sym: 'AAPL', tf: '1D' }, { fn: 'WEI' }, { fn: 'TOP' }, { fn: 'MON' }]
-    : [{ fn: 'GP', sym: 'NVTK', tf: '1D' }, { fn: 'WEI' }, { fn: 'TOP' }, { fn: 'MON' }];
+    : [{ fn: 'GP', sym: 'CRVN', tf: '1D' }, { fn: 'WEI' }, { fn: 'TOP' }, { fn: 'MON' }];
   const panels = [];
   let active = 0;
 
@@ -930,6 +963,7 @@
 
   function load(p, state, push = true) {
     if (!valid(state)) return false;
+    p.seq = (p.seq || 0) + 1; // invalidates lookups started for this panel earlier
     const f = FN[state.fn];
     if (p.ctl && p.ctl.destroy) p.ctl.destroy();
     if (push && p.state) { p.hist.push(p.state); if (p.hist.length > 20) p.hist.shift(); }
@@ -961,10 +995,12 @@
   function open(p, fn, sym, extra) {
     if (I[sym] && (!LIVE || I[sym].quotedAt)) return load(p, Object.assign({ fn, sym }, extra));
     status(`Looking up <b>${esc(sym)}</b>…`);
+    const my = p.seq = (p.seq || 0) + 1;
     M.ensure(sym).then(() => {
+      if (my !== p.seq) return; // the panel moved on while we waited
       load(p, Object.assign({ fn, sym }, extra));
       status(`Panel ${p.i + 1}: ${esc(sym)} ${fn} · ${esc(FN[fn].name)}`);
-    }, err => status(errText(err), 'err'));
+    }, err => { if (my === p.seq) status(errText(err), 'err'); });
     return true;
   }
 
@@ -981,6 +1017,7 @@
     panels.forEach((p, j) => p.el.classList.toggle('active', j === k));
     document.getElementById('promptPanel').textContent = k + 1;
     save();
+    watch();
   }
 
   function toggleMax(p) {
@@ -1007,8 +1044,10 @@
 
   // Tell the market which symbols are on screen so it can stream and refresh them first.
   function watch() {
-    const syms = new Set(M.universe.tape);
-    panels.forEach(p => { if (p.ctl && p.ctl.syms) p.ctl.syms().forEach(s => syms.add(s)); });
+    const syms = new Set();
+    const order = [panels[active]].concat(panels.filter((_, k) => k !== active));
+    order.forEach(p => { if (p && p.ctl && p.ctl.syms) p.ctl.syms().forEach(s => syms.add(s)); });
+    M.universe.tape.forEach(s => syms.add(s));
     M.watch([...syms]);
   }
 
@@ -1016,7 +1055,7 @@
   const cmd = document.getElementById('cmd');
   const sug = document.getElementById('suggest');
   const statusEl = document.getElementById('status');
-  cmd.placeholder = `Ticker and function, e.g. ${LIVE ? 'AAPL' : 'NVTK'} GP. Press Enter to run.`;
+  cmd.placeholder = `Ticker and function, e.g. ${LIVE ? 'AAPL' : 'CRVN'} GP. Press Enter to run.`;
   const hist = [];
   let histIdx = 0, sugItems = [], sugIdx = -1, sugReq = 0, sugTimer = null;
 
@@ -1049,7 +1088,7 @@
     if (!fn) fn = tf || (I[sym] && I[sym].type !== 'equity') ? 'GP' : 'DES';
     if (FN[fn].sec === 'req' && !sym) {
       sym = p.state && p.state.sym && I[p.state.sym] ? p.state.sym : null;
-      if (!sym) { status(`<b>${fn}</b> needs a ticker first, for example <b>${LIVE ? 'AAPL' : 'NVTK'} ${fn}</b>.`, 'err'); return; }
+      if (!sym) { status(`<b>${fn}</b> needs a ticker first, for example <b>${LIVE ? 'AAPL' : 'CRVN'} ${fn}</b>.`, 'err'); return; }
     }
     setActive(target);
     if (FN[fn].sec === 'none') {
@@ -1204,16 +1243,22 @@
     feedEl.dataset.state = f.state;
     if (LIVE) {
       const a = M.authError();
-      banner.hidden = !a;
-      if (a) banner.innerHTML = `${esc(a.message)} Type <b>KEY</b> to update it.`;
+      if (a) { banner.hidden = false; banner.innerHTML = `${esc(a.message)} Type <b>KEY</b> to update it.`; }
+      else if (!M.mock) banner.hidden = true;
     }
+  }
+  if (LIVE && M.mock) {
+    banner.hidden = false;
+    banner.innerHTML = 'Mock API on localhost: every price, name and headline is made up for testing.';
   }
   if (!LIVE) {
     banner.hidden = false;
     banner.innerHTML = 'Demo mode: fictional companies and simulated prices. Type <b>KEY</b> to connect real market data with a free Finnhub key.';
   }
-  document.getElementById('disclaim').textContent = LIVE
-    ? 'Market data and news from Finnhub. May be delayed. Not investment advice.'
+  document.getElementById('disclaim').textContent = LIVE && M.mock
+    ? 'Mock API on localhost: made-up data for testing.'
+    : LIVE
+    ? 'Market data and news from Finnhub, for personal use. May be delayed. Not investment advice.'
     : 'Fictional securities and simulated prices. Not investment information.';
 
   const TAPE = M.universe.tape;
@@ -1237,14 +1282,16 @@
     panels.push(p);
     let st = saved && saved.panels[k];
     if (st && st.fn === 'STORY') st = { fn: st.sym ? 'NEWS' : 'TOP', sym: st.sym };
+    const wantsLookup = LIVE && st && FN[st.fn] && FN[st.fn].sec === 'req' && typeof st.sym === 'string' && /^[A-Z][A-Z.]{0,5}$/.test(st.sym) && !I[st.sym];
     if (!load(p, valid(st) ? st : DEFAULT[k], false)) load(p, DEFAULT[k], false);
+    if (wantsLookup) open(p, st.fn, st.sym, st.fn === 'GP' && TFS.includes(st.tf) ? { tf: st.tf } : {});
   }
   setActive(saved && saved.active >= 0 && saved.active < 4 ? saved.active : 0);
   clock();
   updateTape();
   status(LIVE
     ? 'Type any US ticker and a function, then press <b>Enter</b>. Try <b>NVDA GP 1Y</b>, <b>MSFT DES</b> or <b>TOP</b>.'
-    : 'Type a ticker and a function, then press <b>Enter</b>. Try <b>PRSM GP 1Y</b>, <b>WEI</b> or <b>KEY</b> for real data.');
+    : 'Type a ticker and a function, then press <b>Enter</b>. Try <b>PZMR GP 1Y</b>, <b>WEI</b> or <b>KEY</b> for real data.');
 
   M.onTick(() => {
     panels.forEach(p => { if (p.ctl.tick) p.ctl.tick(); retitle(p); });

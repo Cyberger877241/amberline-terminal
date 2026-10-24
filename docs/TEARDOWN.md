@@ -4,7 +4,7 @@ Amberline started as a question: what makes the big professional market terminal
 
 ## Method: clean-room, public sources only
 
-This is a **user-experience teardown, not a software teardown.** No proprietary terminal software was installed, decompiled, disassembled, intercepted or scraped. Commercial terminals are licensed software, and their license terms generally forbid reverse engineering. The interaction patterns below are well known from public sources such as product marketing pages, published screenshots, trade-press articles and finance courses. Every line of Amberline's code, every name and every data point is original.
+This is a **user-experience teardown, not a software teardown.** No proprietary terminal software was installed, decompiled, disassembled, intercepted or scraped. Commercial terminals are licensed software, and their license terms generally forbid reverse engineering. The interaction patterns below are well known from public sources such as product marketing pages, published screenshots, trade-press articles and finance courses. All of Amberline's code, branding and demo data are original. Function mnemonics such as GP and DES follow conventions widely documented for professional terminals, including Bloomberg's, and are used descriptively. Live data comes from Finnhub.
 
 If you want to try binary or app analysis tools such as [REA](https://github.com/morluto/rea), use them on software you're authorized to inspect. Amberline's own source is a good target because it's MIT-licensed.
 
@@ -13,8 +13,8 @@ If you want to try binary or app analysis tools such as [REA](https://github.com
 | Pattern | Why it works | In Amberline |
 | --- | --- | --- |
 | **Command line first** | Experts type faster than they click. One input reaches every screen. | The `1>` command line is always visible. Typing a letter anywhere on the page sends it there. |
-| **Security + function grammar** | Two short tokens, *what* and *which view*, combine into thousands of screens without menus. | `NVTK GP`, `PRSM DES`, `NVTK NEWS`. The parser accepts either order, and a bare function reuses the panel's ticker. |
-| **Short mnemonics** | Two to five letter codes are fast to type and easy to say to a colleague. | `GP`, `DES`, `WEI`, `FXC`, `CRV`, `MOST`, plus aliases such as `CHART`, `FX`, `YC`. |
+| **Security + function grammar** | Two short tokens, *what* and *which view*, combine into thousands of screens without menus. | `CRVN GP`, `PZMR DES`, `CRVN NEWS`. The parser accepts either order, and a bare function reuses the panel's ticker. |
+| **Short mnemonics** | Two to five letter codes are fast to type and easy to say to a colleague. | `GP`, `DES`, `WEI`, `FXC`, `CRV`, `MOST` follow widely documented terminal conventions. Aliases such as `CHART`, `FX`, `YC` help newcomers. |
 | **Autocomplete as a safety net** | Novices find codes by name, experts never see the list. | Suggestions match ticker prefixes, company names and function names. `Tab` accepts one. |
 | **Multiple independent panels** | Traders watch several things at once and compare them. | Four panels, each with its own function, ticker and back history. `F9` cycles, `F10` maximizes. |
 | **Dedicated function keys** | The most-used screens are one keystroke away. | `F1`–`F8` map to help, news, indices, movers, FX, commodities, curve and monitor. |
@@ -23,11 +23,11 @@ If you want to try binary or app analysis tools such as [REA](https://github.com
 | **Monospaced, tabular numbers** | Columns of prices line up, so changes are easy to scan. | IBM Plex Mono with `tabular-nums` throughout. Labels use IBM Plex Sans Condensed. |
 | **Density over whitespace** | Professionals want the most information per screen. | 12px data rows, sticky table headers, no decorative cards. |
 | **Persistent ticker tape** | Ambient awareness of the market without changing screens. | A scrolling tape along the bottom. Select any item to chart it. Hover pauses it. |
-| **Units are part of the data** | A price is meaningless without its unit: barrels, troy ounces, cents per bushel. | `CMDTY` shows `USD/bbl`, `USD/troy oz`, `USc/bu`. `FXC` explains how to read the matrix. |
+| **Units are part of the data** | A price is meaningless without its unit: barrels, troy ounces, cents per bushel. | Demo `CMDTY` shows `USD/bbl`, `USD/troy oz`, `USc/bu`. Live views say plainly when a price is an ETF rather than the market itself. |
 
 ## What we left out on purpose
 
-- **Trademarks and trade dress.** Amberline has its own name, mark, colors and fictional instruments. It doesn't use any vendor's logo, keyboard design or screen layouts.
+- **Trademarks and branding.** Amberline has its own name, mark and fictional demo instruments, and uses no vendor's logo or keyboard artwork. Demo tickers were checked against US listings in October 2026 so they don't belong to real companies.
 - **Bundled market data.** Amberline never ships or stores vendor data. Live mode fetches real quotes and news from Finnhub with each viewer's own key, and demo mode uses fictional instruments, so the repo itself contains no third-party data.
 - **Messaging, trading and compliance features.** These are huge systems in their own right and aren't needed to show the interaction model.
 
