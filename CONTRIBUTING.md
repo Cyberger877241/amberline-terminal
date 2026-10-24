@@ -10,6 +10,14 @@ python -m http.server 8000
 
 Open <http://localhost:8000> and edit files in `src/`. Reload the page to see changes.
 
+To work on live mode without a Finnhub key, start the mock API in a second terminal and open the page with the dev override:
+
+```bash
+python tools/mock_finnhub.py
+```
+
+Then visit `http://localhost:8000/?api=http://localhost:8766/api/v1&ws=off` and save any key in `KEY`.
+
 ## Add a function
 
 1. In `src/terminal.js`, add an entry to the `FN` object:
@@ -31,7 +39,9 @@ Open <http://localhost:8000> and edit files in `src/`. Reload the page to see ch
 
 ## Guidelines
 
-- Keep data fictional. Don't add real company names, tickers or live prices to the simulator.
+- Keep the demo market fictional. Real companies belong only in live mode, with data fetched at runtime.
+- Never commit API keys or downloaded market data.
+- Insert anything that comes from an API with `textContent` or `esc()`, never as raw HTML.
 - Don't use other vendors' logos, product names or screen designs.
 - Update only the cells that changed in `tick()`, not the whole panel.
 - Check the page at phone width (about 375px). The page itself must never scroll sideways.

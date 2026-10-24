@@ -1,27 +1,31 @@
 /*
  * Amberline Terminal: the front end.
  * Four independent panels driven by a command line, function keys and a
- * ticker tape. All market data comes from data.js and is simulated.
+ * ticker tape. Everything reads from window.AmberlineMarket (market.js),
+ * which is either live Finnhub data or the fictional demo market.
  */
 (function () {
   'use strict';
 
-  const D = window.AmberlineData;
-  const I = D.inst;
-  const STORE_KEY = 'amberline.layout.v1';
-  const TYPE_LABEL = { equity: 'Equity', index: 'Index', cmdty: 'Commodity', fx: 'Currency' };
+  const M = window.AmberlineMarket;
+  const I = M.inst;
+  const LIVE = M.mode === 'live';
+  const STORE_KEY = 'amberline.layout.' + M.mode + '.v2';
+  const TYPE_LABEL = { equity: 'Equity', etf: 'ETF', index: 'Index', cmdty: 'Commodity', fx: 'Currency' };
 
   // ---------- formatting ----------
   const nfCache = {};
+  const ok = v => v != null && isFinite(v);
   function fmt(v, d) {
-    if (v == null || !isFinite(v)) return '—';
+    if (!ok(v)) return '—';
     const f = nfCache[d] || (nfCache[d] = new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
     return f.format(v);
   }
-  const signed = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v), d);
-  const pctStr = v => signed(v, 2) + '%';
-  const dirOf = v => (v > 0 ? 'up' : v < 0 ? 'dn' : '');
+  const signed = (v, d) => (!ok(v) ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v), d));
+  const pctStr = v => (ok(v) ? signed(v, 2) + '%' : '—');
+  const dirOf = v => (!ok(v) ? '' : v > 0 ? 'up' : v < 0 ? 'dn' : '');
   function big(v) {
+    if (!ok(v)) return '—';
     const a = Math.abs(v);
     if (a >= 1e12) return fmt(v / 1e12, 2) + 'T';
     if (a >= 1e9) return fmt(v / 1e9, 2) + 'B';
@@ -29,16 +33,10 @@
     if (a >= 1e3) return fmt(v / 1e3, 1) + 'K';
     return fmt(v, 0);
   }
-  function hhmm(min) {
-    const h = Math.floor(min / 60) % 24, m = Math.floor(min % 60);
-    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-  }
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const todayBar = i => i.daily[i.daily.length - 1];
-  const chg = i => i.last - i.prevClose;
-  const chgPct = i => (i.last / i.prevClose - 1) * 100;
-  const dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-  const monFmt = new Intl.DateTimeFormat('en-US', { month: 'short', year: '2-digit' });
+  const chg = i => (ok(i.last) && ok(i.prevClose) ? i.last - i.prevClose : null);
+  const chgPct = i => (ok(i.last) && i.prevClose ? (i.last / i.prevClose - 1) * 100 : null);
+  const val = v => (typeof v === 'function' ? v() : v);
 
   function flash(el, dir) {
     el.classList.remove('fl-up', 'fl-dn');
@@ -99,10 +97,10 @@
     for (const b of bars) {
       lo = Math.min(lo, line ? b.c : b.l);
       hi = Math.max(hi, line ? b.c : b.h);
-      vmax = Math.max(vmax, b.v);
+      vmax = Math.max(vmax, b.v || 0);
     }
-    if (o.ref != null) { lo = Math.min(lo, o.ref); hi = Math.max(hi, o.ref); }
-    const span = (hi - lo) * 0.08 || hi * 0.01;
+    if (ok(o.ref)) { lo = Math.min(lo, o.ref); hi = Math.max(hi, o.ref); }
+    const span = (hi - lo) * 0.08 || hi * 0.01 || 1;
     lo -= span; hi += span;
 
     ctx.font = '600 11px ' + MONO;
@@ -147,7 +145,7 @@
     }
 
     // previous close
-    if (o.ref != null) {
+    if (ok(o.ref)) {
       ctx.save();
       ctx.setLineDash([3, 4]);
       ctx.strokeStyle = C['amber-dim'];
@@ -158,7 +156,7 @@
     // volume
     if (hasVol) {
       for (let k = 0; k < n; k++) {
-        const b = bars[k], h = b.v / vmax * volH;
+        const b = bars[k], h = (b.v || 0) / vmax * volH;
         ctx.fillStyle = alpha(b.c >= b.o ? C.up : C.dn, 0.4);
         ctx.fillRect(x(k) - body / 2, volTop + volH - h, body, h);
       }
@@ -241,7 +239,7 @@
 
   function drawSpark(cv, values, color) {
     const { ctx, W, H } = sizeCanvas(cv);
-    if (W < 10 || H < 10) return;
+    if (W < 10 || H < 10 || values.length < 2) return;
     const lo = Math.min(...values), hi = Math.max(...values);
     const x = k => k / (values.length - 1) * (W - 2) + 1;
     const y = v => 3 + (hi - v) / (hi - lo || 1) * (H - 6);
@@ -267,12 +265,14 @@
   }
 
   function sparkSVG(values) {
+    if (values.length < 2) return '<span class="muted">—</span>';
     const lo = Math.min(...values), hi = Math.max(...values);
     const pts = values.map((v, k) => `${(k / (values.length - 1) * 78 + 1).toFixed(1)},${(2 + (hi - v) / (hi - lo || 1) * 14).toFixed(1)}`).join(' ');
     return `<svg class="spk" viewBox="0 0 80 18" width="80" height="18" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`;
   }
 
   function pctBar(p) {
+    if (!ok(p)) return '';
     const w = Math.min(50, Math.abs(p) * 25);
     return `<span class="pbar"><i style="${p >= 0 ? 'left:50%' : 'right:50%'};width:${w.toFixed(1)}%"></i></span>`;
   }
@@ -281,28 +281,34 @@
   const COL = {
     sym: { k: 'sym', label: 'Ticker', cls: 'sym', get: i => i.sym },
     name: { k: 'name', label: 'Name', cls: 'name', get: i => i.name },
+    proxy: { k: 'proxy', label: 'Market', cls: 'name', get: i => i.proxy || i.name },
     last: { k: 'last', label: 'Last', num: 1, live: 1, get: i => fmt(i.last, i.dec) },
     chg: { k: 'chg', label: 'Net chg', num: 1, dir: 1, get: i => signed(chg(i), i.dec) },
     pct: { k: 'pct', label: '% chg', num: 1, dir: 1, get: i => pctStr(chgPct(i)) },
     bar: { k: 'bar', label: '', html: 1, dir: 1, get: i => pctBar(chgPct(i)) },
     y1: { k: 'y1', label: '1Y %', num: 1, dirOf: i => i.last - i.daily[0].c, get: i => pctStr((i.last / i.daily[0].c - 1) * 100) },
-    vol: { k: 'vol', label: 'Volume', num: 1, get: i => big(todayBar(i).v) },
-    rng: { k: 'rng', label: 'Day range', num: 1, cls: 'muted', get: i => fmt(todayBar(i).l, i.dec) + ' – ' + fmt(todayBar(i).h, i.dec) },
+    vol: { k: 'vol', label: 'Volume', num: 1, get: i => big(M.day(i).v) },
+    rng: { k: 'rng', label: 'Day range', num: 1, cls: 'muted', get: i => { const d = M.day(i); return fmt(d.l, i.dec) + ' – ' + fmt(d.h, i.dec); } },
     unit: { k: 'unit', label: 'Unit', cls: 'muted', get: i => i.unit },
     ba: { k: 'ba', label: 'Bid × Ask', num: 1, cls: 'muted', get: i => { const s = Math.max(0.01, i.last * 0.00015); return fmt(i.last - s, i.dec) + ' × ' + fmt(i.last + s, i.dec); } },
-    spark: { k: 'spark', label: 'Today', html: 1, dir: 1, get: i => sparkSVG(i.intra.map(b => b.c)) }
+    spark: { k: 'spark', label: 'Today', html: 1, dir: 1, get: i => sparkSVG((i.intra || i.ticks).map(b => b.c)) },
+    upd: { k: 'upd', label: 'Updated', num: 1, cls: 'muted', get: i => (i.tradeAt || i.quotedAt ? timeAgo(Math.max(i.tradeAt || 0, i.quotedAt || 0)) : 'loading') }
   };
+  function timeAgo(ms) {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    return s < 5 ? 'now' : s < 60 ? s + 's ago' : s < 3600 ? Math.floor(s / 60) + 'm ago' : Math.floor(s / 3600) + 'h ago';
+  }
 
   function quoteTable(host, groups, cols, onRow) {
     host.innerHTML = `<table class="qt"><thead><tr>${cols.map(c => `<th class="${c.num ? 'num' : ''}" scope="col">${c.label}</th>`).join('')}</tr></thead>` +
       groups.map(g => `<tbody>${g.label ? `<tr class="grp"><th colspan="${cols.length}" scope="rowgroup">${esc(g.label)}</th></tr>` : ''}` +
-        g.syms.map(s => `<tr data-sym="${s}" tabindex="0">${cols.map(c => `<td class="${[c.cls, c.num && 'num'].filter(Boolean).join(' ')}"></td>`).join('')}</tr>`).join('') +
+        g.syms.map(s => `<tr data-sym="${esc(s)}" tabindex="0">${cols.map(c => `<td class="${[c.cls, c.num && 'num'].filter(Boolean).join(' ')}"></td>`).join('')}</tr>`).join('') +
         '</tbody>').join('') + '</table>';
     const rows = [...host.querySelectorAll('tr[data-sym]')].map(tr => ({ inst: I[tr.dataset.sym], cells: [...tr.children] }));
     function update(first) {
       rows.forEach(r => cols.forEach((c, j) => {
         const td = r.cells[j], v = c.get(r.inst);
-        if (c.html) td.innerHTML = v; else put(td, v, !first && c.live ? r.inst.dir : null);
+        if (c.html) { if (td.innerHTML !== v) td.innerHTML = v; } else put(td, v, !first && c.live ? r.inst.dir : null);
         if (c.dir) setDir(td, chg(r.inst));
         if (c.dirOf) setDir(td, c.dirOf(r.inst));
       }));
@@ -314,12 +320,19 @@
     return update;
   }
 
+  function notice(host, html, kind) {
+    host.innerHTML = `<div class="notice ${kind || ''}">${html}</div>`;
+  }
+  function errText(err) {
+    return esc(err && err.message ? err.message : 'Something went wrong loading this data.');
+  }
+
   // ---------- functions ----------
   const FN = {};
   const TFS = ['1D', '1M', '3M', '6M', '1Y'];
 
   FN.GP = {
-    name: 'Price Graph', sec: 'req', example: 'NVTK GP 6M',
+    name: 'Price Graph', sec: 'req', example: LIVE ? 'AAPL GP 6M' : 'NVTK GP 6M',
     help: 'Candlestick or line chart with volume and 20/50-day moving averages. Add 1D, 1M, 3M, 6M or 1Y.',
     mount(p, s) {
       const i = I[s.sym];
@@ -332,43 +345,68 @@
             <div class="seg" data-k="tf" role="group" aria-label="Timeframe">${TFS.map(t => `<button type="button" data-v="${t}">${t}</button>`).join('')}</div>
             <div class="seg" data-k="style" role="group" aria-label="Chart style"><button type="button" data-v="candle">Candle</button><button type="button" data-v="line">Line</button></div>
           </div>
-          <div class="chart"><canvas role="img" aria-label="Price chart for ${esc(i.name)}"></canvas><div class="legend"></div></div>
+          <p class="chart-note" hidden></p>
+          <div class="chart"><canvas role="img" aria-label="Price chart for ${esc(i.name)}"></canvas><div class="legend"></div><div class="chart-msg" hidden></div></div>
         </div>`;
       const cv = p.body.querySelector('canvas');
       const legend = p.body.querySelector('.legend');
+      const note = p.body.querySelector('.chart-note');
+      const msg = p.body.querySelector('.chart-msg');
       const qLast = p.body.querySelector('.q-last'), qChg = p.body.querySelector('.q-chg');
-      let hover = null, geo = null;
+      let hover = null, geo = null, sr = null, req = 0, dead = false;
 
       const syncSeg = () => p.body.querySelectorAll('.seg').forEach(g => g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s[g.dataset.k]))));
       p.body.querySelectorAll('.seg').forEach(g => g.addEventListener('click', e => {
         const b = e.target.closest('button');
         if (!b) return;
-        s[g.dataset.k] = b.dataset.v;
+        const k = g.dataset.k;
+        s[k] = b.dataset.v;
         hover = null;
-        syncSeg(); save(); draw();
+        syncSeg(); save();
+        if (k === 'tf') fetchBars(); else draw();
       }));
 
-      function series() {
-        if (s.tf === '1D') return { bars: i.intra, intraday: true };
-        const len = { '1M': 22, '3M': 63, '6M': 126, '1Y': 252 }[s.tf];
-        const off = Math.max(0, i.daily.length - len);
-        return { bars: i.daily.slice(off), ma: { src: i.daily, off } };
+      function fetchBars() {
+        const my = ++req;
+        sr = null;
+        msg.hidden = false;
+        msg.textContent = 'Loading chart…';
+        legend.textContent = '';
+        sizeCanvas(cv);
+        M.bars(s.sym, s.tf).then(r => {
+          if (dead || my !== req) return;
+          sr = r;
+          note.hidden = !r.note;
+          note.textContent = r.note || '';
+          draw();
+        }, err => {
+          if (dead || my !== req) return;
+          msg.hidden = false;
+          msg.innerHTML = errText(err);
+        });
       }
       function draw() {
-        const sr = series();
-        if (hover != null) hover = Math.min(hover, sr.bars.length - 1);
-        const longRange = s.tf === '6M' || s.tf === '1Y';
-        geo = drawChart(cv, sr.bars, {
-          style: s.style, dec: i.dec, vol: true, hover,
-          ref: sr.intraday ? i.prevClose : null,
-          ma: sr.ma || null,
-          xlabel: sr.intraday ? b => hhmm(b.t) : b => (longRange ? monFmt : dayFmt).format(b.t)
+        if (!sr) return;
+        const bars = sr.series();
+        if (!bars.length) {
+          sizeCanvas(cv);
+          legend.textContent = '';
+          msg.hidden = false;
+          msg.textContent = 'Waiting for the first trade. Outside market hours this can take until the next session opens.';
+          return;
+        }
+        msg.hidden = true;
+        if (hover != null) hover = Math.min(hover, bars.length - 1);
+        const ma = sr.ma ? sr.ma() : null;
+        geo = drawChart(cv, bars, {
+          style: sr.kind === 'ticks' ? 'line' : s.style, dec: i.dec, vol: true, hover,
+          ref: sr.ref ? sr.ref() : null, ma, xlabel: sr.xlabel
         });
-        const b = sr.bars[hover != null ? hover : sr.bars.length - 1];
-        legend.innerHTML = `<span class="lt">${sr.intraday ? hhmm(b.t) + ' ET' : dayFmt.format(b.t)}</span>` +
-          `O <b>${fmt(b.o, i.dec)}</b>H <b>${fmt(b.h, i.dec)}</b>L <b>${fmt(b.l, i.dec)}</b>C <b>${fmt(b.c, i.dec)}</b>` +
-          (b.v ? `V <b>${big(b.v)}</b>` : '') +
-          (sr.ma ? '<span class="ma20">MA20</span><span class="ma50">MA50</span>' : '<span class="ref">--- prev close</span>');
+        const b = bars[hover != null ? hover : bars.length - 1];
+        legend.innerHTML = `<span class="lt">${esc(sr.tlabel(b))}</span>` +
+          (sr.kind === 'ticks' ? `Last <b>${fmt(b.c, i.dec)}</b>` :
+            `O <b>${fmt(b.o, i.dec)}</b>H <b>${fmt(b.h, i.dec)}</b>L <b>${fmt(b.l, i.dec)}</b>C <b>${fmt(b.c, i.dec)}</b>` + (b.v ? `V <b>${big(b.v)}</b>` : '')) +
+          (ma ? '<span class="ma20">MA20</span><span class="ma50">MA50</span>' : ok(sr.ref && sr.ref()) ? '<span class="ref">--- prev close</span>' : '');
       }
       cv.addEventListener('pointermove', e => {
         if (!geo) return;
@@ -385,47 +423,42 @@
         qChg.textContent = signed(chg(i), i.dec) + '  ' + pctStr(chgPct(i));
         setDir(qChg, chg(i));
       }
-      syncSeg(); quote(); draw();
-      return { tick() { quote(); draw(); }, destroy() { ro.disconnect(); } };
+      syncSeg(); quote(); fetchBars();
+      return { syms: () => [s.sym], tick() { quote(); draw(); }, destroy() { dead = true; ro.disconnect(); } };
     }
   };
 
   FN.DES = {
-    name: 'Description', sec: 'req', example: 'PRSM DES',
+    name: 'Description', sec: 'req', example: LIVE ? 'MSFT DES' : 'PRSM DES',
     help: 'Company profile, key statistics, 52-week range and peers.',
     mount(p, s) {
       const i = I[s.sym];
-      const eq = i.type === 'equity';
-      const rows = [['Last', 'last'], ['Net change', 'chg'], ['Open', 'open'], ['Previous close', 'pc'], ['Day range', 'rng']]
-        .concat(eq
-          ? [['Volume', 'vol'], ['30-day avg volume', 'avg'], ['Market cap', 'cap'], ['P/E (trailing)', 'pe'], ['Dividend yield', 'div'], ['Shares outstanding', 'sh'], ['Beta vs AMX500', 'beta']]
-          : [['Quote unit', 'unit'], ['1-year change', 'y1']]);
-      const peers = (eq ? D.order.equity.filter(x => x !== i.sym && I[x].sector === i.sector) : [])
-        .concat(D.order[i.type].filter(x => x !== i.sym && I[x].group === i.group))
-        .concat(D.order[i.type].filter(x => x !== i.sym));
-      const peerList = [...new Set(peers)].slice(0, 5);
+      const rows = [['Last', 'last'], ['Net change', 'chg'], ['Open', 'open'], ['Previous close', 'pc'], ['Day range', 'rng'],
+        ['Market cap', 'cap'], ['P/E (trailing)', 'pe'], ['EPS (trailing)', 'eps'], ['Dividend yield', 'div'], ['Shares outstanding', 'sh'],
+        ['Beta', 'beta'], [LIVE ? '10-day avg volume' : '30-day avg volume', 'avg']];
       p.body.innerHTML = `
         <div class="des">
           <div class="des-head">
-            <div><h3>${esc(i.name)}</h3><p class="des-sub">${esc(i.sym)} · ${TYPE_LABEL[i.type]} · ${esc(i.group)}</p></div>
+            <div><h3 class="des-name">${esc(i.name)}</h3><p class="des-sub">${esc(i.sym)} · ${TYPE_LABEL[i.type] || 'Security'} · <span class="des-sector">${esc(i.group)}</span></p></div>
             <div class="quote"><span class="q-last"></span><span class="q-chg"></span></div>
           </div>
           <div class="des-grid">
-            <table class="kv"><tbody>${rows.map(([l, k]) => `<tr><th scope="row">${l}</th><td data-f="${k}"></td></tr>`).join('')}</tbody></table>
+            <table class="kv"><tbody>${rows.map(([l, k]) => `<tr data-row="${k}"><th scope="row">${l}</th><td data-f="${k}">…</td></tr>`).join('')}</tbody></table>
             <div class="des-side">
               <div class="r52">
-                <div class="r52-lbl"><span>52-week low <b data-f="lo52"></b></span><span>high <b data-f="hi52"></b></span></div>
+                <div class="r52-lbl"><span>52-week low <b data-f="lo52">…</b></span><span>high <b data-f="hi52">…</b></span></div>
                 <div class="r52-track"><i></i></div>
               </div>
-              <div class="label spark-lbl">One year, daily close</div>
-              <div class="spark-wrap"><canvas role="img" aria-label="One-year price line"></canvas></div>
-              ${eq ? `<p class="about">${esc(i.about)}</p>
-              <dl class="facts"><div><dt>Headquarters</dt><dd>${esc(i.hq)}</dd></div><div><dt>Founded</dt><dd>${i.founded}</dd></div><div><dt>Employees</dt><dd>${fmt(i.employees, 0)}</dd></div></dl>` : ''}
+              <div class="spark-box" hidden><div class="label spark-lbl">One year, daily close</div>
+              <div class="spark-wrap"><canvas role="img" aria-label="One-year price line"></canvas></div></div>
+              <p class="about" hidden></p>
+              <dl class="facts"></dl>
               <div class="chips"><span class="label">Open</span>
                 <button type="button" class="chip" data-go="GP"><span class="fn">GP</span> Price graph</button>
                 <button type="button" class="chip" data-go="NEWS"><span class="fn">NEWS</span> Headlines</button>
               </div>
-              <div class="chips"><span class="label">Peers</span>${peerList.map(x => `<button type="button" class="chip" data-sym="${x}">${x}</button>`).join('')}</div>
+              <div class="chips peers" hidden><span class="label">Peers</span></div>
+              <p class="src-note"></p>
             </div>
           </div>
         </div>`;
@@ -434,89 +467,112 @@
       const qLast = p.body.querySelector('.q-last'), qChg = p.body.querySelector('.q-chg');
       const marker = p.body.querySelector('.r52-track i');
       const cv = p.body.querySelector('.spark-wrap canvas');
-      const avg30 = i.daily.slice(-31, -1).reduce((a, b) => a + b.v, 0) / 30;
+      let prof = null, dead = false;
       p.body.addEventListener('click', e => {
         const b = e.target.closest('button');
         if (!b) return;
         if (b.dataset.go) load(p, { fn: b.dataset.go, sym: i.sym });
-        if (b.dataset.sym) load(p, { fn: 'DES', sym: b.dataset.sym });
+        if (b.dataset.sym) open(p, 'DES', b.dataset.sym);
       });
-      const spark = () => drawSpark(cv, i.daily.map(b => b.c), i.last >= i.daily[0].c ? C.up : C.dn);
+      const spark = () => { if (prof && prof.spark) drawSpark(cv, prof.spark(), i.last >= prof.spark()[0] ? C.up : C.dn); };
       const ro = new ResizeObserver(spark);
       ro.observe(cv);
 
+      M.profile(s.sym).then(pr => {
+        if (dead) return;
+        prof = pr;
+        p.body.querySelector('.des-name').textContent = i.name;
+        p.body.querySelector('.des-sector').textContent = pr.sector || i.group;
+        if (pr.about) { const a = p.body.querySelector('.about'); a.hidden = false; a.textContent = pr.about; }
+        const facts = (pr.facts || []).slice();
+        p.body.querySelector('.facts').innerHTML = facts.map(([dt, dd]) => `<div><dt>${esc(dt)}</dt><dd>${esc(dd)}</dd></div>`).join('') +
+          (pr.web ? `<div><dt>Website</dt><dd><a href="${esc(pr.web)}" target="_blank" rel="noopener noreferrer">${esc(new URL(pr.web).hostname.replace(/^www\./, ''))}</a></dd></div>` : '');
+        if (pr.peers && pr.peers.length) {
+          const box = p.body.querySelector('.peers');
+          box.hidden = false;
+          box.insertAdjacentHTML('beforeend', pr.peers.map(x => `<button type="button" class="chip" data-sym="${esc(x)}">${esc(x)}</button>`).join(''));
+        }
+        if (pr.spark) { p.body.querySelector('.spark-box').hidden = false; spark(); }
+        p.body.querySelector('.src-note').textContent = pr.error ? 'Profile unavailable: ' + pr.error.message
+          : pr.source === 'Finnhub' ? 'Profile and statistics from Finnhub. Quotes update as trades stream in.' : 'Simulated company. Every figure here is fictional.';
+        update();
+      }, err => { if (!dead) p.body.querySelector('.src-note').textContent = 'Profile unavailable: ' + (err && err.message || 'unknown error'); });
+
       function update() {
-        const t = todayBar(i);
-        let lo = Infinity, hi = -Infinity;
-        i.daily.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); });
+        const d = M.day(i);
         put(qLast, fmt(i.last, i.dec), i.dir);
         qChg.textContent = signed(chg(i), i.dec) + '  ' + pctStr(chgPct(i));
         setDir(qChg, chg(i));
+        const st = prof ? prof.stats || {} : null;
+        const S = k => (st ? val(st[k]) : undefined);
+        const pending = '…';
         const v = {
-          last: fmt(i.last, i.dec), chg: signed(chg(i), i.dec) + ' (' + pctStr(chgPct(i)) + ')',
-          open: fmt(i.open, i.dec), pc: fmt(i.prevClose, i.dec), rng: fmt(t.l, i.dec) + ' – ' + fmt(t.h, i.dec),
-          vol: big(t.v), avg: big(avg30), cap: '$' + big(i.sharesBn * 1e9 * i.last),
-          pe: i.pe ? fmt(i.pe * i.last / i.price, 1) + '×' : 'n/m (loss)',
-          div: i.div ? fmt(i.div * i.price / i.last, 2) + '%' : 'None',
-          sh: fmt(i.sharesBn, 2) + 'B', beta: fmt(i.beta, 2),
-          unit: i.unit, y1: pctStr((i.last / i.daily[0].c - 1) * 100),
-          lo52: fmt(lo, i.dec), hi52: fmt(hi, i.dec)
+          last: fmt(i.last, i.dec), chg: ok(chg(i)) ? signed(chg(i), i.dec) + ' (' + pctStr(chgPct(i)) + ')' : '—',
+          open: fmt(d.o, i.dec), pc: fmt(i.prevClose, i.dec), rng: fmt(d.l, i.dec) + ' – ' + fmt(d.h, i.dec),
+          cap: !st ? pending : ok(S('cap')) ? '$' + big(S('cap')) : '—',
+          pe: !st ? pending : ok(S('pe')) && S('pe') > 0 ? fmt(S('pe'), 1) + '×' : 'n/m',
+          eps: !st ? pending : ok(S('eps')) ? '$' + fmt(S('eps'), 2) : '—',
+          div: !st ? pending : ok(S('div')) ? (S('div') ? fmt(S('div'), 2) + '%' : 'None') : '—',
+          sh: !st ? pending : big(S('sh')), beta: !st ? pending : fmt(S('beta'), 2),
+          avg: !st ? pending : big(S('avgVol')),
+          lo52: !st ? pending : fmt(S('lo52'), i.dec), hi52: !st ? pending : fmt(S('hi52'), i.dec)
         };
         for (const k in f) put(f[k], v[k], k === 'last' ? i.dir : null);
         setDir(f.chg, chg(i));
-        marker.style.left = ((i.last - lo) / (hi - lo || 1) * 100).toFixed(2) + '%';
+        const lo = S('lo52'), hi = S('hi52');
+        marker.hidden = !(ok(lo) && ok(hi) && ok(i.last));
+        if (!marker.hidden) marker.style.left = Math.max(0, Math.min(100, (i.last - lo) / (hi - lo || 1) * 100)).toFixed(2) + '%';
       }
       update();
       let n = 0;
-      return { tick() { update(); if (++n % 10 === 0) spark(); }, destroy() { ro.disconnect(); } };
+      return { syms: () => [s.sym], tick() { update(); if (++n % 10 === 0) spark(); }, destroy() { dead = true; ro.disconnect(); } };
     }
   };
 
-  function tableFn(name, help, groupsFn, cols, row) {
+  function tableFn(name, help, groupsFn, colsFn, row) {
     return {
       name, help, sec: 'none',
       mount(p) {
-        p.body.innerHTML = '<div class="tbl-wrap"></div>';
-        const update = quoteTable(p.body.firstChild, groupsFn(), cols, sym => load(p, { fn: row(sym), sym }));
-        return { tick: () => update(false) };
+        const groups = groupsFn();
+        p.body.innerHTML = '<div class="tbl-wrap"></div>' + (LIVE && name !== 'Equity Monitor' ? '<p class="tbl-note">US-listed ETFs stand in for each market, because Finnhub\'s free plan doesn\'t quote index levels or futures.</p>' : '');
+        const update = quoteTable(p.body.firstChild, groups, colsFn(), sym => open(p, row(sym), sym));
+        return { syms: () => groups.flatMap(g => g.syms), tick: () => update(false) };
       }
     };
   }
-  const byGroup = type => {
-    const g = {};
-    D.order[type].forEach(s => { (g[I[s].group] = g[I[s].group] || []).push(s); });
-    return Object.keys(g).map(label => ({ label, syms: g[label] }));
-  };
 
-  FN.WEI = tableFn('World Equity Indices', 'Benchmark indices by region with net and percent change.',
-    () => byGroup('index'), [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.y1], () => 'GP');
-  FN.CMDTY = tableFn('Commodities', 'Front-month energy, metals and agriculture futures with quote units.',
-    () => byGroup('cmdty'), [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.unit], () => 'GP');
-  FN.MON = tableFn('Equity Monitor', 'Every equity in the universe with bid and ask, volume and an intraday sparkline.',
-    () => [{ label: null, syms: D.order.equity }], [COL.sym, COL.name, COL.last, COL.chg, COL.pct, COL.ba, COL.vol, COL.spark], () => 'DES');
+  FN.WEI = tableFn('World Equity Indices', LIVE ? 'Country and benchmark ETFs by region, as stand-ins for index levels.' : 'Benchmark indices by region with net and percent change.',
+    () => M.universe.world,
+    () => (LIVE ? [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.rng] : [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.y1]), () => 'GP');
+  FN.CMDTY = tableFn('Commodities', LIVE ? 'Energy, metals and agriculture through the ETFs that track them.' : 'Front-month energy, metals and agriculture futures with quote units.',
+    () => M.universe.cmdty,
+    () => (LIVE ? [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.upd] : [COL.name, COL.sym, COL.last, COL.chg, COL.pct, COL.rng, COL.unit]), () => 'GP');
+  FN.MON = tableFn('Equity Monitor', LIVE ? 'Twenty US large caps with day range, an intraday line and how fresh each quote is.' : 'Every equity in the universe with bid and ask, volume and an intraday sparkline.',
+    () => [{ label: null, syms: M.universe.monitor }],
+    () => (LIVE ? [COL.sym, COL.name, COL.last, COL.chg, COL.pct, COL.rng, COL.spark, COL.upd] : [COL.sym, COL.name, COL.last, COL.chg, COL.pct, COL.ba, COL.vol, COL.spark]), () => 'DES');
 
   FN.MOST = {
-    name: 'Most Active', sec: 'none', example: 'MOST',
-    help: 'Equities ranked by volume, or the biggest gainers and losers.',
+    name: LIVE ? 'Movers' : 'Most Active', sec: 'none', example: 'MOST',
+    help: LIVE ? 'The biggest gainers and losers among the large caps in the monitor.' : 'Equities ranked by volume, or the biggest gainers and losers.',
     mount(p, s) {
-      const TABS = { active: 'Most active', gainers: 'Gainers', losers: 'Losers' };
-      s.tab = TABS[s.tab] ? s.tab : 'active';
+      const TABS = LIVE ? { gainers: 'Gainers', losers: 'Losers' } : { active: 'Most active', gainers: 'Gainers', losers: 'Losers' };
+      s.tab = TABS[s.tab] ? s.tab : Object.keys(TABS)[0];
       p.body.innerHTML = `<div class="most"><div class="most-top"><div class="seg" role="group" aria-label="Ranking">${Object.keys(TABS).map(k => `<button type="button" data-v="${k}">${TABS[k]}</button>`).join('')}</div></div><div class="tbl-wrap"></div></div>`;
-      const host = p.body.querySelector('.tbl-wrap');
+      let host = p.body.querySelector('.tbl-wrap');
       let update;
+      const cols = LIVE ? [COL.sym, COL.name, COL.last, COL.chg, COL.pct, COL.rng]
+        : [COL.sym, COL.name, COL.last, COL.pct, COL.vol, { k: 'tv', label: 'Value traded', num: 1, get: x => '$' + big(M.day(x).v * x.last) }];
       function render() {
         p.body.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.tab)));
-        const all = D.order.equity.map(x => I[x]);
-        const sorted = s.tab === 'active' ? all.sort((a, b) => todayBar(b).v * b.last - todayBar(a).v * a.last)
+        const all = M.universe.monitor.map(x => I[x]).filter(x => ok(chgPct(x)));
+        const sorted = s.tab === 'active' ? all.sort((a, b) => M.day(b).v * b.last - M.day(a).v * a.last)
           : all.sort((a, b) => (s.tab === 'gainers' ? 1 : -1) * (chgPct(b) - chgPct(a)));
         const fresh = host.cloneNode(false);
         host.replaceWith(fresh);
-        hostRef = fresh;
-        update = quoteTable(fresh, [{ label: null, syms: sorted.slice(0, 12).map(x => x.sym) }],
-          [COL.sym, COL.name, COL.last, COL.pct, COL.vol, { k: 'tv', label: 'Value traded', num: 1, get: x => '$' + big(todayBar(x).v * x.last) }],
-          sym => load(p, { fn: 'DES', sym }));
+        host = fresh;
+        if (!sorted.length) { notice(host, 'Waiting for quotes…'); update = () => {}; return; }
+        update = quoteTable(host, [{ label: null, syms: sorted.slice(0, 12).map(x => x.sym) }], cols, sym => open(p, 'DES', sym));
       }
-      let hostRef = host;
       p.body.querySelector('.seg').addEventListener('click', e => {
         const b = e.target.closest('button');
         if (!b) return;
@@ -526,14 +582,16 @@
       });
       render();
       let n = 0;
-      return { tick() { if (++n % 5 === 0 && !hostRef.contains(document.activeElement)) render(); else update(false); } };
+      return { syms: () => M.universe.monitor, tick() { if (++n % 5 === 0 && !host.contains(document.activeElement)) render(); else update(false); } };
     }
   };
 
-  FN.FXC = {
+  FN.FXC = LIVE ? tableFn('Currencies', 'Currency ETFs against the US dollar. Finnhub\'s free plan doesn\'t include spot FX rates.',
+    () => [{ label: 'Currency ETFs', syms: M.universe.fx }], () => [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.bar, COL.rng], () => 'GP') : {
     name: 'Currency Matrix', sec: 'none', example: 'FXC',
     help: 'Cross rates for eight major currencies. Each cell is one unit of the row currency priced in the column currency.',
     mount(p) {
+      const D = M.demo;
       const cur = D.currencies;
       p.body.innerHTML = `<div class="tbl-wrap"><table class="qt fxc"><caption>One unit of the row currency, priced in the column currency. Green or red shows the move since the previous close.</caption>
         <thead><tr><th scope="col"></th>${cur.map(c => `<th class="num" scope="col">${c}</th>`).join('')}</tr></thead>
@@ -557,17 +615,61 @@
     }
   };
 
-  FN.CRV = {
+  FN.CRV = LIVE ? {
+    name: 'Treasuries', sec: 'none', example: 'CRV',
+    help: 'Treasury ETFs from T-bills to 20+ years, ordered by duration. Bond prices fall when yields rise.',
+    mount(p) {
+      const syms = M.universe.rates;
+      p.body.innerHTML = `
+        <div class="crv">
+          <div class="crv-top"><span class="label">Today's % change by maturity bucket</span></div>
+          <div class="chart"><canvas role="img" aria-label="Bar chart of Treasury ETF changes by maturity"></canvas></div>
+          <div class="tbl-wrap crv-tbl"></div>
+          <p class="tbl-note">These are ETF prices, not yields. When yields rise, longer-maturity bond prices fall the most. Finnhub's free plan doesn't include Treasury yields.</p>
+        </div>`;
+      const cv = p.body.querySelector('canvas');
+      const update = quoteTable(p.body.querySelector('.crv-tbl'), [{ label: null, syms }], [COL.proxy, COL.sym, COL.last, COL.chg, COL.pct, COL.upd], sym => open(p, 'GP', sym));
+      function draw() {
+        const { ctx, W, H } = sizeCanvas(cv);
+        if (W < 60 || H < 60) return;
+        const vals = syms.map(s => chgPct(I[s]));
+        const m = Math.max(0.25, ...vals.filter(ok).map(Math.abs)) * 1.2;
+        const padL = 8, padR = 52, padT = 10, padB = 22;
+        const n = syms.length, cw = (W - padL - padR) / n;
+        const y = v => padT + (m - v) / (2 * m) * (H - padT - padB);
+        ctx.font = '11px ' + MONO;
+        ctx.strokeStyle = C.grid;
+        [-m / 1.2, 0, m / 1.2].forEach(v => {
+          hline(ctx, padL, W - padR, Math.round(y(v)) + 0.5);
+          ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText(signed(v, 2) + '%', W - padR + 6, y(v));
+        });
+        syms.forEach((s, k) => {
+          const v = vals[k];
+          ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = C.muted;
+          ctx.fillText(I[s].short, padL + cw * (k + 0.5), H - 6);
+          if (!ok(v)) return;
+          ctx.fillStyle = v >= 0 ? C.up : C.dn;
+          const y0 = y(0), y1 = y(v);
+          ctx.fillRect(padL + cw * k + cw * 0.2, Math.min(y0, y1), cw * 0.6, Math.max(1, Math.abs(y1 - y0)));
+        });
+      }
+      const ro = new ResizeObserver(draw);
+      ro.observe(cv);
+      return { syms: () => syms, tick() { update(false); draw(); }, destroy() { ro.disconnect(); } };
+    }
+  } : {
     name: 'Yield Curve', sec: 'none', example: 'CRV',
     help: 'Simulated government yield curve today, one month ago and one year ago, with changes in basis points.',
     mount(p) {
+      const curve = M.demo.curve;
       p.body.innerHTML = `
         <div class="crv">
           <div class="crv-top"><span class="label">Government curve · yield %</span>
             <span class="key"><i class="k-now"></i>Today</span><span class="key"><i class="k-m1"></i>1 month ago</span><span class="key"><i class="k-y1"></i>1 year ago</span></div>
           <div class="chart"><canvas role="img" aria-label="Yield curve chart"></canvas></div>
           <div class="tbl-wrap crv-tbl"><table class="qt"><thead><tr><th scope="col">Tenor</th><th class="num" scope="col">Yield</th><th class="num" scope="col">1D (bp)</th><th class="num" scope="col">1M (bp)</th><th class="num" scope="col">1Y (bp)</th></tr></thead>
-          <tbody>${D.curve.map(c => `<tr><td class="sym">${c.tenor}</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>`).join('')}</tbody></table></div>
+          <tbody>${curve.map(c => `<tr><td class="sym">${c.tenor}</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>`).join('')}</tbody></table></div>
         </div>`;
       const cv = p.body.querySelector('canvas');
       const trs = [...p.body.querySelectorAll('tbody tr')];
@@ -576,10 +678,10 @@
         if (W < 60 || H < 60) return;
         const series = [['y1', C.muted, [4, 4]], ['m1', C.link, [2, 3]], ['y', C.amber, []]];
         let lo = Infinity, hi = -Infinity;
-        D.curve.forEach(c => series.forEach(([k]) => { lo = Math.min(lo, c[k]); hi = Math.max(hi, c[k]); }));
+        curve.forEach(c => series.forEach(([k]) => { lo = Math.min(lo, c[k]); hi = Math.max(hi, c[k]); }));
         lo -= 0.08; hi += 0.08;
         const padL = 8, padR = 48, padT = 10, padB = 22;
-        const n = D.curve.length;
+        const n = curve.length;
         const x = k => padL + (W - padL - padR) * k / (n - 1);
         const y = v => padT + (hi - v) / (hi - lo) * (H - padT - padB);
         ctx.font = '11px ' + MONO;
@@ -596,7 +698,7 @@
         }
         ctx.textAlign = 'center';
         ctx.textBaseline = 'alphabetic';
-        D.curve.forEach((c, k) => {
+        curve.forEach((c, k) => {
           ctx.strokeStyle = C.grid;
           vline(ctx, Math.round(x(k)) + 0.5, padT, H - padB);
           ctx.fillStyle = C.muted;
@@ -609,15 +711,15 @@
           ctx.strokeStyle = col;
           ctx.lineWidth = k === 'y' ? 2 : 1.3;
           ctx.beginPath();
-          D.curve.forEach((c, j) => (j ? ctx.lineTo(x(j), y(c[k])) : ctx.moveTo(x(j), y(c[k]))));
+          curve.forEach((c, j) => (j ? ctx.lineTo(x(j), y(c[k])) : ctx.moveTo(x(j), y(c[k]))));
           ctx.stroke();
           ctx.restore();
         });
         ctx.fillStyle = C.amber;
-        D.curve.forEach((c, j) => { ctx.beginPath(); ctx.arc(x(j), y(c.y), 2.5, 0, Math.PI * 2); ctx.fill(); });
+        curve.forEach((c, j) => { ctx.beginPath(); ctx.arc(x(j), y(c.y), 2.5, 0, Math.PI * 2); ctx.fill(); });
       }
       function update(first) {
-        D.curve.forEach((c, k) => {
+        curve.forEach((c, k) => {
           const td = trs[k].children;
           put(td[1], fmt(c.y, 3), first ? null : (c.y >= c.open ? 'up' : 'dn'));
           [[2, c.open], [3, c.m1], [4, c.y1]].forEach(([j, ref]) => {
@@ -635,47 +737,118 @@
   };
 
   function newsMount(p, sym) {
-    p.body.innerHTML = '<ol class="news"></ol>';
+    p.body.innerHTML = '<ol class="news" aria-busy="true"><li class="empty">Loading headlines…</li></ol>' +
+      (LIVE ? '<p class="tbl-note">Headlines and summaries from Finnhub and its publishers. Amberline doesn\'t write or verify them.</p>' : '');
     const ol = p.body.firstChild;
-    let shown = -1;
-    function render() {
-      const items = D.news.filter(n => !sym || n.syms.includes(sym)).slice(0, 60);
-      const t = D.ticks();
-      ol.innerHTML = items.map(n => `<li data-id="${n.id}" tabindex="0" class="${n.hot ? 'hot' : ''} ${n.born && t - n.born < 3 ? 'new' : ''}">
-          <time>${hhmm(n.t)}</time><span class="src">${n.src}</span><span class="head">${esc(n.head)}</span><span class="tk">${n.syms.join(' ')}</span></li>`).join('') ||
-        `<li class="empty">No ${esc(sym)} stories yet today. New headlines arrive as the session runs.</li>`;
-      shown = D.news.length ? D.news[0].id : 0;
+    let dead = false, loading = false;
+    function render(items) {
+      const t = M.ticks();
+      ol.removeAttribute('aria-busy');
+      ol.innerHTML = items.map(n => `<li data-id="${esc(n.id)}" tabindex="0" class="${n.hot ? 'hot' : ''} ${n.born && t - n.born < 3 ? 'new' : ''}">
+          <time>${esc(n.when)}</time><span class="src" title="${esc(n.src)}">${esc(n.src)}</span><span class="head">${esc(n.head)}</span><span class="tk">${esc(n.syms.join(' '))}</span></li>`).join('') ||
+        `<li class="empty">${sym ? `No ${esc(sym)} headlines in the last week.` : 'No headlines right now.'}</li>`;
     }
-    const open = li => li && li.dataset.id && load(p, { fn: 'STORY', id: +li.dataset.id, sym: sym || null });
-    ol.addEventListener('click', e => open(e.target.closest('li')));
-    ol.addEventListener('keydown', e => { if (e.key === 'Enter') open(e.target.closest('li')); });
-    render();
-    return { tick() { if (D.news.length && D.news[0].id !== shown) render(); } };
+    function fetchNews() {
+      if (loading) return;
+      loading = true;
+      M.news(sym).then(items => { if (!dead) render(items); }, err => { if (!dead) ol.innerHTML = `<li class="empty">${errText(err)}</li>`; })
+        .finally(() => { loading = false; });
+    }
+    const openStory = li => li && li.dataset.id && load(p, { fn: 'STORY', id: li.dataset.id, sym: sym || null });
+    ol.addEventListener('click', e => openStory(e.target.closest('li')));
+    ol.addEventListener('keydown', e => { if (e.key === 'Enter') openStory(e.target.closest('li')); });
+    M.newsChanged();
+    fetchNews();
+    return { syms: () => (sym ? [sym] : []), tick() { if (M.newsChanged()) fetchNews(); }, destroy() { dead = true; } };
   }
 
-  FN.TOP = { name: 'Top News', sec: 'none', example: 'TOP', help: 'Headlines across the market, newest first. Select one to read it.', mount: p => newsMount(p, null) };
-  FN.NEWS = { name: 'Company News', sec: 'req', example: 'NVTK NEWS', help: 'Headlines that mention one security.', mount: (p, s) => newsMount(p, s.sym) };
+  FN.TOP = { name: 'Top News', sec: 'none', example: 'TOP', help: LIVE ? 'Market headlines from Finnhub, newest first. Select one to read the summary.' : 'Headlines across the market, newest first. Select one to read it.', mount: p => newsMount(p, null) };
+  FN.NEWS = { name: 'Company News', sec: 'req', example: LIVE ? 'NVDA NEWS' : 'NVTK NEWS', help: LIVE ? 'Headlines about one company from the last seven days.' : 'Headlines that mention one security.', mount: (p, s) => newsMount(p, s.sym) };
   FN.STORY = {
     name: 'Story', sec: 'none', hidden: true,
     mount(p, s) {
-      const n = D.news.find(x => x.id === s.id);
+      const n = M.story(s.id);
       if (!n) {
-        p.body.innerHTML = '<article class="story"><p class="meta">This story is no longer in the feed.</p><button type="button" class="chip" data-back>Back to headlines</button></article>';
+        p.body.innerHTML = '<article class="story"><p class="meta">This story is no longer in the feed.</p><button type="button" class="chip" data-back>◀ Headlines</button></article>';
       } else {
         p.body.innerHTML = `<article class="story">
           <button type="button" class="chip" data-back>◀ Headlines</button>
-          <p class="meta">${hhmm(n.t)} ET · ${n.src} · Amberline Wire (simulated)</p>
+          <p class="meta">${esc(n.when)}${LIVE ? '' : ' ET'} · ${esc(n.src)}${LIVE ? '' : ' · Amberline Wire (simulated)'}</p>
           <h3>${esc(n.head)}</h3>
-          ${n.body.map((b, k) => `<p class="${k === n.body.length - 1 ? 'note' : ''}">${esc(b)}</p>`).join('')}
-          <div class="chips"><span class="label">Securities</span>${n.syms.map(x => `<button type="button" class="chip" data-sym="${x}">${x}</button>`).join('')}</div>
+          ${n.body.map((b, k) => `<p class="${!LIVE && k === n.body.length - 1 ? 'note' : ''}">${esc(b)}</p>`).join('') || '<p class="muted">No summary was provided with this headline.</p>'}
+          ${n.url ? `<p><a class="read" href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">Read the full story at ${esc(n.src)} ↗</a></p>` : ''}
+          ${LIVE ? '<p class="note">Headline and summary from Finnhub and the publisher named above. Amberline doesn\'t write or verify news.</p>' : ''}
+          ${n.syms.length ? `<div class="chips"><span class="label">Securities</span>${n.syms.map(x => `<button type="button" class="chip" data-sym="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
         </article>`;
       }
       p.body.addEventListener('click', e => {
         const b = e.target.closest('button');
         if (!b) return;
         if (b.hasAttribute('data-back')) back(p, { fn: s.sym ? 'NEWS' : 'TOP', sym: s.sym });
-        if (b.dataset.sym) load(p, { fn: 'GP', sym: b.dataset.sym });
+        if (b.dataset.sym) open(p, 'GP', b.dataset.sym);
       });
+    }
+  };
+
+  FN.KEY = {
+    name: 'Data Connection', sec: 'none', example: 'KEY',
+    help: 'Connect real market data with your own free Finnhub API key, or go back to the demo.',
+    mount(p) {
+      const live = LIVE;
+      p.body.innerHTML = `
+        <div class="help keypage">
+          <section>
+            <h3>${live ? 'Connected to Finnhub' : 'Demo mode'}</h3>
+            <p>${live
+              ? 'Quotes, company profiles and headlines come from Finnhub using the key saved in this browser. Prices stream in during market hours and quotes refresh about once a minute.'
+              : 'Right now every company, price and headline is fictional. To see real US stocks, ETFs and news, add your own Finnhub API key. A free key takes a minute to get.'}</p>
+          </section>
+          ${live ? `<section><h3>Status</h3><dl class="keys status-list">
+              <div><dt>Feed</dt><dd data-k="feed">…</dd></div>
+              <div><dt>Requests</dt><dd data-k="req">…</dd></div>
+              <div><dt>Historical charts</dt><dd data-k="candles">…</dd></div>
+              <div><dt>Key</dt><dd data-k="auth">…</dd></div>
+            </dl></section>` : `<section><h3>Get a key</h3>
+              <p>1. Sign up at <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer">finnhub.io/register</a>. 2. Copy the API key from your dashboard. 3. Paste it below.</p></section>`}
+          <section>
+            <h3>${live ? 'Change key' : 'Your Finnhub API key'}</h3>
+            <form class="keyform" autocomplete="off">
+              <label for="fhKey" class="label">API key</label>
+              <div class="keyrow">
+                <input id="fhKey" type="password" spellcheck="false" autocomplete="off" placeholder="Paste your Finnhub key">
+                <button type="submit" class="chip solid">Save and connect</button>
+                ${live ? '<button type="button" class="chip" data-clear>Remove key and use demo</button>' : ''}
+              </div>
+              <p class="keymsg" role="status"></p>
+            </form>
+            <p class="fine">Your key is stored only in this browser's local storage and is sent only to Finnhub. Anyone using this computer and browser profile can see it, so remove it on shared machines. Finnhub's free plan is for personal use; check its terms before showing live data in public.</p>
+          </section>
+        </div>`;
+      const form = p.body.querySelector('form');
+      const input = p.body.querySelector('#fhKey');
+      const msg = p.body.querySelector('.keymsg');
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const k = input.value.trim();
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(k)) { msg.textContent = "That doesn't look like a Finnhub key. Keys are letters and numbers, usually 20 characters."; msg.className = 'keymsg err'; return; }
+        if (!M.setKey(k)) { msg.textContent = "This browser won't let the page save data, so the key can't be kept. Try a normal (non-private) window."; msg.className = 'keymsg err'; return; }
+        msg.textContent = 'Saved. Connecting…';
+        msg.className = 'keymsg';
+        setTimeout(() => location.reload(), 300);
+      });
+      const clr = p.body.querySelector('[data-clear]');
+      if (clr) clr.addEventListener('click', () => { M.setKey(''); location.reload(); });
+      function update() {
+        if (!live) return;
+        const f = M.feed(), r = M.requests(), c = M.candles(), a = M.authError();
+        const set = (k, t) => { const el = p.body.querySelector(`[data-k="${k}"]`); if (el) el.textContent = t; };
+        set('feed', f.state === 'live' ? 'Streaming live trades' : 'Polling quotes about once a minute (no live stream)');
+        set('req', `${r.used} of ${r.perMinute} this minute${r.queued ? ', ' + r.queued + ' waiting' : ''}`);
+        set('candles', c === true ? 'Included in your plan' : c === false ? 'Not in your plan; charts show live trades instead' : 'Not checked yet');
+        set('auth', a ? a.message : 'Accepted');
+      }
+      update();
+      return { tick: update };
     }
   };
 
@@ -684,11 +857,12 @@
     help: 'This page: functions, syntax and keyboard shortcuts.',
     mount(p) {
       const fns = Object.keys(FN).filter(k => !FN[k].hidden);
+      const ex = LIVE ? 'AAPL GP' : 'NVTK GP';
       p.body.innerHTML = `
         <div class="help">
           <section>
             <h3>How to type a command</h3>
-            <p>Type a ticker, a function, or both, then press <kbd>Enter</kbd>. <b>NVTK GP</b> charts Novatek Systems. A ticker on its own opens its description. A function on its own reuses the ticker already in the panel. Add <b>P1</b>–<b>P4</b> to send the result to another panel.</p>
+            <p>Type a ticker, a function, or both, then press <kbd>Enter</kbd>. <b>${ex}</b> opens a price graph. A ticker on its own opens its description. A function on its own reuses the ticker already in the panel. Add <b>P1</b>–<b>P4</b> to send the result to another panel.${LIVE ? ' Any US stock or ETF ticker works, not just the ones in the monitor.' : ''}</p>
           </section>
           <section>
             <h3>Functions</h3>
@@ -711,7 +885,10 @@
           </section>
           <section>
             <h3>About the data</h3>
-            <p>Every company, index name, price, yield and headline is fictional and generated in your browser from a seeded random walk. Nothing here is investment information. Amberline is an independent design study and is not affiliated with any market-data vendor or terminal provider.</p>
+            <p>${LIVE
+              ? 'Quotes, profiles, statistics and headlines come from Finnhub through your own API key. Market-wide views use US-listed ETFs as stand-ins for indices, commodities, currencies and Treasuries. Data may be delayed or incomplete. Nothing here is investment advice.'
+              : 'Demo mode: every company, index name, price, yield and headline is fictional and generated in your browser. Type <b>KEY</b> to connect real data with a free Finnhub key.'}
+              Amberline is an independent project and is not affiliated with Bloomberg L.P., Finnhub or any exchange.</p>
           </section>
         </div>`;
       p.body.addEventListener('click', e => {
@@ -721,11 +898,13 @@
     }
   };
 
-  const ALIAS = { G: 'GP', CHART: 'GP', N: 'NEWS', FX: 'FXC', ACT: 'MOST', YC: 'CRV', CMD: 'CMDTY', W: 'MON', '?': 'HELP', INDEX: 'WEI', NI: 'NEWS' };
+  const ALIAS = { G: 'GP', CHART: 'GP', N: 'NEWS', FX: 'FXC', ACT: 'MOST', MOVERS: 'MOST', YC: 'CRV', TSY: 'CRV', CMD: 'CMDTY', W: 'MON', '?': 'HELP', INDEX: 'WEI', NI: 'NEWS', API: 'KEY', LIVE: 'KEY', DEMO: 'KEY' };
 
   // ---------- panels ----------
   const grid = document.getElementById('grid');
-  const DEFAULT = [{ fn: 'GP', sym: 'NVTK', tf: '1D' }, { fn: 'WEI' }, { fn: 'TOP' }, { fn: 'MON' }];
+  const DEFAULT = LIVE
+    ? [{ fn: 'GP', sym: 'AAPL', tf: '1D' }, { fn: 'WEI' }, { fn: 'TOP' }, { fn: 'MON' }]
+    : [{ fn: 'GP', sym: 'NVTK', tf: '1D' }, { fn: 'WEI' }, { fn: 'TOP' }, { fn: 'MON' }];
   const panels = [];
   let active = 0;
 
@@ -757,14 +936,35 @@
     p.state = Object.assign({}, state);
     p.backBtn.hidden = !p.hist.length;
     const i = f.sec !== 'none' && state.sym ? I[state.sym] : null;
-    const code = state.fn === 'STORY' ? 'NEWS' : state.fn;
-    p.title.innerHTML = `${i ? `<span class="psym">${esc(i.sym)}</span>` : ''}<span class="fn">${code}</span><span class="pname">${esc(i ? i.name + ' · ' + f.name : f.name)}</span>`;
-    p.body.scrollTop = 0;
+    retitle(p);
     const fresh = p.body.cloneNode(false); // drop listeners from the previous function
     p.body.replaceWith(fresh);
     p.body = fresh;
     p.ctl = f.mount(p, p.state) || {};
     save();
+    watch();
+    return true;
+  }
+
+  // Company names can arrive after the panel opens, so titles refresh on each tick.
+  function retitle(p) {
+    const f = FN[p.state.fn];
+    const i = f.sec !== 'none' && p.state.sym ? I[p.state.sym] : null;
+    const key = (i ? i.name : '') + p.state.fn;
+    if (p.titleKey === key) return;
+    p.titleKey = key;
+    const code = p.state.fn === 'STORY' ? 'NEWS' : p.state.fn;
+    p.title.innerHTML = `${i ? `<span class="psym">${esc(i.sym)}</span>` : ''}<span class="fn">${code}</span><span class="pname">${esc(i ? i.name + ' · ' + f.name : f.name)}</span>`;
+  }
+
+  // Load a ticker that may not be in the market yet (live mode accepts any US ticker).
+  function open(p, fn, sym, extra) {
+    if (I[sym] && (!LIVE || I[sym].quotedAt)) return load(p, Object.assign({ fn, sym }, extra));
+    status(`Looking up <b>${esc(sym)}</b>…`);
+    M.ensure(sym).then(() => {
+      load(p, Object.assign({ fn, sym }, extra));
+      status(`Panel ${p.i + 1}: ${esc(sym)} ${fn} · ${esc(FN[fn].name)}`);
+    }, err => status(errText(err), 'err'));
     return true;
   }
 
@@ -805,12 +1005,20 @@
     return null;
   }
 
+  // Tell the market which symbols are on screen so it can stream and refresh them first.
+  function watch() {
+    const syms = new Set(M.universe.tape);
+    panels.forEach(p => { if (p.ctl && p.ctl.syms) p.ctl.syms().forEach(s => syms.add(s)); });
+    M.watch([...syms]);
+  }
+
   // ---------- command line ----------
   const cmd = document.getElementById('cmd');
   const sug = document.getElementById('suggest');
   const statusEl = document.getElementById('status');
+  cmd.placeholder = `Ticker and function, e.g. ${LIVE ? 'AAPL' : 'NVTK'} GP. Press Enter to run.`;
   const hist = [];
-  let histIdx = 0, sugItems = [], sugIdx = -1;
+  let histIdx = 0, sugItems = [], sugIdx = -1, sugReq = 0, sugTimer = null;
 
   function status(html, kind) {
     statusEl.innerHTML = html;
@@ -820,14 +1028,16 @@
   function run(text) {
     const toks = text.trim().toUpperCase().replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean);
     if (!toks.length) return;
+    // A token that is both a function and a ticker (FXC) is a ticker when another function is present.
+    const isFn = t => (FN[t] && !FN[t].hidden) || ALIAS[t];
+    const fnCount = toks.filter(isFn).length;
     let target = active, sym = null, fn = null, tf = null;
     for (const t of toks) {
       if (/^P[1-4]$/.test(t)) target = +t[1] - 1;
-      else if (!fn && FN[t] && !FN[t].hidden) fn = t;
-      else if (!fn && ALIAS[t]) fn = ALIAS[t];
-      else if (!sym && I[t]) sym = t;
       else if (TFS.includes(t)) tf = t;
       else if (t === 'GO') continue;
+      else if (!fn && isFn(t) && !(fnCount > 1 && (I[t] || LIVE) && !sym)) fn = FN[t] && !FN[t].hidden ? t : ALIAS[t];
+      else if (!sym && (I[t] || (LIVE && /^[A-Z][A-Z.]{0,5}$/.test(t)))) sym = t;
       else {
         status(`<b>${esc(t)}</b> isn't a ticker or a function code. Type <b>HELP</b> to see what's available.`, 'err');
         return;
@@ -836,16 +1046,22 @@
     const p = panels[target];
     if (!fn && !sym && tf) fn = 'GP';
     if (!fn && !sym) { setActive(target); return; }
-    if (!fn) fn = tf || I[sym].type !== 'equity' ? 'GP' : 'DES';
+    if (!fn) fn = tf || (I[sym] && I[sym].type !== 'equity') ? 'GP' : 'DES';
     if (FN[fn].sec === 'req' && !sym) {
       sym = p.state && p.state.sym && I[p.state.sym] ? p.state.sym : null;
-      if (!sym) { status(`<b>${fn}</b> needs a ticker first, for example <b>NVTK ${fn}</b>.`, 'err'); return; }
+      if (!sym) { status(`<b>${fn}</b> needs a ticker first, for example <b>${LIVE ? 'AAPL' : 'NVTK'} ${fn}</b>.`, 'err'); return; }
     }
-    const state = { fn, sym: FN[fn].sec === 'none' ? null : sym };
-    if (fn === 'GP') state.tf = tf || (p.state && p.state.fn === 'GP' && p.state.sym === sym ? p.state.tf : '1D');
     setActive(target);
-    load(p, state);
-    status(`Panel ${target + 1}: ${sym && state.sym ? esc(sym) + ' ' : ''}${fn} · ${esc(FN[fn].name)}`);
+    if (FN[fn].sec === 'none') {
+      load(p, { fn });
+      status(`Panel ${target + 1}: ${fn} · ${esc(FN[fn].name)}`);
+      return;
+    }
+    const extra = {};
+    if (fn === 'GP') extra.tf = tf || (p.state && p.state.fn === 'GP' && p.state.sym === sym ? p.state.tf : '1D');
+    if (!I[sym] || (LIVE && !I[sym].quotedAt)) { open(p, fn, sym, extra); return; }
+    load(p, Object.assign({ fn, sym }, extra));
+    status(`Panel ${target + 1}: ${esc(sym)} ${fn} · ${esc(FN[fn].name)}`);
   }
 
   function buildSuggestions() {
@@ -861,21 +1077,32 @@
     });
     Object.values(I).forEach(i => {
       const score = i.sym.startsWith(q) ? (i.sym === q ? 0 : 1) : i.name.toUpperCase().includes(q) ? 2 : -1;
-      if (score >= 0) out.push({ v: i.sym, sub: i.name, kind: TYPE_LABEL[i.type], score });
+      if (score >= 0) out.push({ v: i.sym, sub: i.name, kind: TYPE_LABEL[i.type] || 'Security', score });
     });
     out.sort((a, b) => a.score - b.score || a.v.localeCompare(b.v));
     sugItems = out.slice(0, 8);
     sugIdx = -1;
     renderSug();
+    // Live mode also searches Finnhub for tickers outside the built-in lists.
+    clearTimeout(sugTimer);
+    if (LIVE && q.length >= 2 && sugItems.length < 8) {
+      const my = ++sugReq, typed = cmd.value;
+      sugTimer = setTimeout(() => M.find(q).then(found => {
+        if (my !== sugReq || cmd.value !== typed) return;
+        const have = new Set(sugItems.map(s => s.v));
+        found.forEach(f => { if (!have.has(f.sym) && sugItems.length < 8) sugItems.push({ v: f.sym, sub: f.name, kind: f.kind, score: 5 }); });
+        renderSug();
+      }), 350);
+    }
   }
   function renderSug() {
-    sug.innerHTML = sugItems.map((s, k) => `<li role="option" id="sug-${k}" data-k="${k}" aria-selected="${k === sugIdx}"><b>${esc(s.v)}</b><span>${esc(s.sub)}</span><em>${s.kind}</em></li>`).join('');
+    sug.innerHTML = sugItems.map((s, k) => `<li role="option" id="sug-${k}" data-k="${k}" aria-selected="${k === sugIdx}"><b>${esc(s.v)}</b><span>${esc(s.sub)}</span><em>${esc(s.kind)}</em></li>`).join('');
     sug.hidden = !sugItems.length;
     cmd.setAttribute('aria-expanded', String(!sug.hidden));
     if (sugIdx >= 0) cmd.setAttribute('aria-activedescendant', 'sug-' + sugIdx);
     else cmd.removeAttribute('aria-activedescendant');
   }
-  function closeSug() { sugItems = []; sugIdx = -1; renderSug(); }
+  function closeSug() { sugReq++; clearTimeout(sugTimer); sugItems = []; sugIdx = -1; renderSug(); }
   function accept(k) {
     const s = sugItems[k];
     const parts = cmd.value.split(/\s+/);
@@ -897,24 +1124,24 @@
 
   cmd.addEventListener('input', buildSuggestions);
   cmd.addEventListener('keydown', e => {
-    const open = !sug.hidden;
+    const isOpen = !sug.hidden;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (open) { sugIdx = (sugIdx + 1) % sugItems.length; renderSug(); }
+      if (isOpen) { sugIdx = (sugIdx + 1) % sugItems.length; renderSug(); }
       else if (histIdx < hist.length) { histIdx++; cmd.value = hist[histIdx] || ''; }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (open) { sugIdx = (sugIdx - 1 + sugItems.length) % sugItems.length; renderSug(); }
+      if (isOpen) { sugIdx = (sugIdx - 1 + sugItems.length) % sugItems.length; renderSug(); }
       else if (histIdx > 0) { histIdx--; cmd.value = hist[histIdx]; }
-    } else if (e.key === 'Tab' && open) {
+    } else if (e.key === 'Tab' && isOpen) {
       e.preventDefault();
       accept(Math.max(0, sugIdx));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (open && sugIdx >= 0) accept(sugIdx);
+      if (isOpen && sugIdx >= 0) accept(sugIdx);
       submit();
     } else if (e.key === 'Escape') {
-      if (open) closeSug(); else cmd.value = '';
+      if (isOpen) closeSug(); else cmd.value = '';
     }
   });
   cmd.addEventListener('blur', () => setTimeout(closeSug, 120));
@@ -931,11 +1158,11 @@
   const FKEYS = [
     ['F1', 'Help', () => run('HELP')],
     ['F2', 'Top news', () => run('TOP')],
-    ['F3', 'Indices', () => run('WEI')],
-    ['F4', 'Most active', () => run('MOST')],
-    ['F5', 'FX matrix', () => run('FXC')],
+    ['F3', LIVE ? 'World' : 'Indices', () => run('WEI')],
+    ['F4', LIVE ? 'Movers' : 'Most active', () => run('MOST')],
+    ['F5', LIVE ? 'Currencies' : 'FX matrix', () => run('FXC')],
     ['F6', 'Commodities', () => run('CMDTY')],
-    ['F7', 'Yield curve', () => run('CRV')],
+    ['F7', LIVE ? 'Treasuries' : 'Yield curve', () => run('CRV')],
     ['F8', 'Monitor', () => run('MON')],
     ['F9', 'Next panel', () => setActive((active + 1) % panels.length)],
     ['F10', 'Maximize', () => toggleMax(panels[active])]
@@ -950,22 +1177,46 @@
     if (e.altKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); setActive(+e.key - 1); return; }
     if (e.target === cmd || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest && e.target.closest('input, textarea, select')) return;
-    if (e.key.length === 1 && /[A-Za-z0-9?]/.test(e.key)) cmd.focus(); // the keystroke lands in the command line
+    if (e.key.length === 1 && /[A-Za-z0-9?]/.test(e.key)) {
+      // Typing anywhere goes to the command line, including this first keystroke.
+      e.preventDefault();
+      cmd.focus();
+      cmd.value += e.key;
+      buildSuggestions();
+    }
   });
 
-  // ---------- header and tape ----------
+  // ---------- header, banner and tape ----------
   const simClock = document.getElementById('simClock');
+  const clockPrefix = document.getElementById('clockPrefix');
   const mktState = document.getElementById('mktState');
+  const feedEl = document.getElementById('feed');
+  const banner = document.getElementById('banner');
   document.getElementById('dateLbl').textContent = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()).toUpperCase();
   function clock() {
-    const t = D.simNow();
-    simClock.textContent = hhmm(t);
-    const open = t < D.SESSION_CLOSE;
-    mktState.textContent = open ? 'Market open' : 'After hours';
-    mktState.classList.toggle('closed', !open);
+    const c = M.clock();
+    simClock.textContent = c.time;
+    clockPrefix.textContent = c.prefix;
+    mktState.textContent = c.state;
+    mktState.classList.toggle('closed', !c.open);
+    const f = M.feed();
+    feedEl.lastChild.textContent = f.label;
+    feedEl.dataset.state = f.state;
+    if (LIVE) {
+      const a = M.authError();
+      banner.hidden = !a;
+      if (a) banner.innerHTML = `${esc(a.message)} Type <b>KEY</b> to update it.`;
+    }
   }
+  if (!LIVE) {
+    banner.hidden = false;
+    banner.innerHTML = 'Demo mode: fictional companies and simulated prices. Type <b>KEY</b> to connect real market data with a free Finnhub key.';
+  }
+  document.getElementById('disclaim').textContent = LIVE
+    ? 'Market data and news from Finnhub. May be delayed. Not investment advice.'
+    : 'Fictional securities and simulated prices. Not investment information.';
 
-  const TAPE = ['AMX500', 'ATC100', 'NVTK', 'QSRV', 'PRSM', 'CDRW', 'ARDN', 'HLXB', 'EZ50', 'JP225', 'CL1', 'GC1', 'EURUSD', 'USDJPY', 'NBLA', 'SKYH', 'MRDN', 'VTRA'];
+  const TAPE = M.universe.tape;
   const tape = document.getElementById('tape');
   const tapeItem = s => `<button type="button" class="ti" data-tape="${s}" tabindex="-1"><b>${s}</b><span class="tl"></span><span class="tc"></span></button>`;
   tape.innerHTML = TAPE.map(tapeItem).join('') + TAPE.map(tapeItem).join('');
@@ -991,12 +1242,15 @@
   setActive(saved && saved.active >= 0 && saved.active < 4 ? saved.active : 0);
   clock();
   updateTape();
-  status('Type a ticker and a function, then press <b>Enter</b>. Try <b>PRSM GP 1Y</b>, <b>WEI</b> or <b>HELP</b>.');
+  status(LIVE
+    ? 'Type any US ticker and a function, then press <b>Enter</b>. Try <b>NVDA GP 1Y</b>, <b>MSFT DES</b> or <b>TOP</b>.'
+    : 'Type a ticker and a function, then press <b>Enter</b>. Try <b>PRSM GP 1Y</b>, <b>WEI</b> or <b>KEY</b> for real data.');
 
-  D.onTick(() => {
-    panels.forEach(p => { if (p.ctl.tick) p.ctl.tick(); });
+  M.onTick(() => {
+    panels.forEach(p => { if (p.ctl.tick) p.ctl.tick(); retitle(p); });
     clock();
     updateTape();
   });
-  D.start();
+  watch();
+  M.start();
 })();

@@ -1,39 +1,51 @@
 # Amberline Terminal
 
-A professional-style market terminal that runs in your browser. It has a command line with autocomplete, four independent panels, live candlestick charts, function keys and a scrolling ticker tape. There's no build step, no dependencies and no API key.
+A professional-style market terminal that runs in your browser. It has a command line with autocomplete, four independent panels, candlestick charts, company profiles, news, function keys and a scrolling ticker tape.
 
-![Amberline Terminal showing a price graph, world indices, top news and an equity monitor](docs/screenshot.png)
+- **Live mode:** real US stocks, ETFs and market news from [Finnhub](https://finnhub.io), using your own free API key.
+- **Demo mode:** a fictional market that runs with no key and no network, which is good for showing the interface anywhere.
 
-> **All data is simulated.** Every company, index name, price, yield and headline is fictional and generated in your browser. Amberline is an independent design study. It is not affiliated with, endorsed by or derived from the software of Bloomberg L.P. or any other market-data vendor.
+There's no build step, no server and no dependencies.
+
+![Amberline Terminal showing a price graph, world markets, top news and an equity monitor](docs/screenshot.png)
+
+> Amberline is an independent project. It is not affiliated with, endorsed by or derived from the software of Bloomberg L.P., Finnhub or any exchange. Market data may be delayed or incomplete. Nothing here is investment advice.
 
 ## Try it
 
-- **Live demo:** after you enable GitHub Pages (see [Deploy](#deploy)), the terminal is at `https://<your-username>.github.io/amberline-terminal/`
-- **Locally:** download the repo and open `index.html` in any modern browser. To serve it instead:
+- **Hosted:** after you enable GitHub Pages (see [Deploy](#deploy)), the terminal is at `https://<your-username>.github.io/amberline-terminal/`
+- **Locally:** serve the folder and open <http://localhost:8000>:
 
 ```bash
 python -m http.server 8000
 ```
 
-Then open <http://localhost:8000>.
+It opens in demo mode. To switch to real data:
+
+1. Get a free key at [finnhub.io/register](https://finnhub.io/register).
+2. In the terminal, type `KEY` and press Enter.
+3. Paste the key and select **Save and connect**.
+
+Your key is stored only in your browser's local storage and is sent only to Finnhub. To go back to the demo, open `KEY` and select **Remove key and use demo**.
 
 ## How to use it
 
-Type a **ticker**, a **function**, or both, then press **Enter**. A ticker on its own opens its description. A function on its own reuses the ticker already in the panel. Add `P1` to `P4` to send the result to a specific panel.
+Type a **ticker**, a **function**, or both, then press **Enter**. A ticker on its own opens its description. A function on its own reuses the ticker already in the panel. Add `P1` to `P4` to send the result to a specific panel. In live mode any US stock or ETF ticker works, and autocomplete searches Finnhub as you type.
 
-| Command | What it shows |
-| --- | --- |
-| `NVTK GP` | Price graph: candles or line, volume, 20/50-day moving averages. Add `1D`, `1M`, `3M`, `6M` or `1Y`. |
-| `PRSM DES` | Description: profile, key statistics, 52-week range, one-year sparkline, peers |
-| `NVTK NEWS` | Headlines that mention one security |
-| `TOP` | All headlines, newest first. Select one to read the story. |
-| `WEI` | World equity indices by region |
-| `MOST` | Most active, top gainers and top losers |
-| `FXC` | Cross-rate matrix for eight currencies |
-| `CMDTY` | Energy, metals and agriculture futures with their quote units |
-| `CRV` | Government yield curve today, 1 month ago and 1 year ago |
-| `MON` | Monitor of every equity, with bid/ask and an intraday sparkline |
-| `HELP` | Every function, with examples and keyboard shortcuts |
+| Command | Live mode | Demo mode |
+| --- | --- | --- |
+| `AAPL GP 6M` | Price graph: candles or line, volume, 20/50-day moving averages. `1D`, `1M`, `3M`, `6M`, `1Y`. | Same, for fictional tickers such as `NVTK` |
+| `MSFT DES` | Profile, market cap, P/E, EPS, dividend yield, beta, 52-week range, peers | Fictional profile |
+| `NVDA NEWS` | Company headlines from the last 7 days | Simulated headlines |
+| `TOP` | Market headlines. Select one for the summary and a link to the publisher. | Simulated headlines |
+| `WEI` | World markets through country and benchmark ETFs (SPY, QQQ, EWJ…) | Fictional indices |
+| `MOST` | Biggest gainers and losers among 20 large caps | Most active, gainers, losers |
+| `FXC` | Currency ETFs (FXE, FXY, UUP…) | Cross-rate matrix |
+| `CMDTY` | Commodity ETFs (USO, GLD, CORN…) | Simulated futures with quote units |
+| `CRV` | Treasury ETFs by maturity, from T-bills to 20+ years | Simulated yield curve |
+| `MON` | 20 large caps with day range, intraday line and quote age | Every fictional equity |
+| `KEY` | Connection status, request budget, change or remove your key | Add a key |
+| `HELP` | Every function, with examples and keyboard shortcuts | Same |
 
 ### Keyboard
 
@@ -48,21 +60,47 @@ Type a **ticker**, a **function**, or both, then press **Enter**. A ticker on it
 | `Esc` | Clear the command line |
 | Any letter | Starts typing a command from anywhere on the page |
 
-Your panel layout is saved in your browser, so it's still there when you come back.
+## What the free Finnhub plan covers
+
+| Data | Free plan | How Amberline handles it |
+| --- | --- | --- |
+| Real-time US stock and ETF quotes | Yes | Streamed over WebSocket during market hours, refreshed by REST about once a minute |
+| Company profiles, metrics, peers | Yes | `DES` |
+| Company and market news | Yes | `NEWS`, `TOP` |
+| Historical candles | Usually not (paid add-on) | `GP` tries candles first. If your plan doesn't include them, it charts live trades since you opened the page and says so. |
+| Index levels, futures, spot FX, Treasury yields | No | `WEI`, `CMDTY`, `FXC` and `CRV` use US-listed ETFs as stand-ins and label them that way |
+| 60 API calls a minute | Limit | A request queue stays under 50 a minute and fetches what's on screen first |
+
+Finnhub's free plan is for personal use. Check [Finnhub's terms](https://finnhub.io/terms-of-service) before you show live data to an audience. Demo mode is always safe to present.
 
 ## How it works
 
 ```
-index.html          page shell: top bar, command line, panel grid, function keys, tape
-src/data.js         simulated market: instruments, price history, live ticks, headlines
-src/terminal.js     front end: command parser, autocomplete, panels, canvas charts
-src/terminal.css    the look: dark trading-screen palette, IBM Plex type
-docs/TEARDOWN.md    the design study behind the interface
+index.html              page shell: top bar, command line, panel grid, function keys, tape
+src/finnhub.js          Finnhub client: rate-limited queue, cache, error types, WebSocket stream
+src/market.js           one market interface with two implementations: live (Finnhub) and demo
+src/data.js             the demo market: fictional instruments, seeded random walk, headlines
+src/terminal.js         front end: command parser, autocomplete, panels, canvas charts
+src/terminal.css        the look: dark trading-screen palette, IBM Plex type
+tools/mock_finnhub.py   a local stand-in for the Finnhub API, for development and tests
+docs/TEARDOWN.md        the design study behind the interface
 ```
 
-**The market** (`src/data.js`). Each instrument gets a year of daily bars and a session of 5-minute bars from a seeded random walk. The seed is the instrument and today's date, so everyone sees the same history on a given day. Today's bars are a Brownian bridge from the open to a reference price. Once a second, every price moves by a shared regional factor plus its own noise, so stocks and their index tend to move together. A new 5-minute bar opens every 30 ticks, and new headlines appear at random, often about the day's biggest mover.
+**The market** (`src/market.js`) is the only thing panels talk to. It exposes instruments, `bars()`, `profile()`, `news()`, `find()` and a once-a-second tick. When a key is saved it builds the live market on top of the Finnhub client. Otherwise it wraps the demo simulator. Panels tell the market which symbols are on screen, so those get streamed and refreshed first.
 
-**The front end** (`src/terminal.js`). Each function (`GP`, `DES`, `WEI` and the rest) is a small module with a `mount` method that builds the panel and a `tick` method that updates only the cells that changed. Changed prices flash green or red. Charts are drawn on `<canvas>` with device-pixel-ratio scaling, a crosshair and an OHLC legend. Everything is plain JavaScript with no framework.
+**The Finnhub client** (`src/finnhub.js`) queues requests by priority and keeps them under the per-minute limit. It shares one request between callers asking for the same thing, caches results for a short time, and turns HTTP errors into clear kinds (`auth`, `premium`, `rate`, `network`). Rate-limited requests retry once after 5 seconds.
+
+**The front end** (`src/terminal.js`). Each function (`GP`, `DES`, `WEI` and the rest) is a small module with a `mount` method that builds the panel and a `tick` method that updates only the cells that changed. Charts are drawn on `<canvas>`. News text from the API is always inserted as text, never as HTML, and only `http(s)` links are shown.
+
+## Develop without a key
+
+`tools/mock_finnhub.py` answers the same endpoints with made-up data:
+
+```bash
+python tools/mock_finnhub.py
+```
+
+Then open `http://localhost:8000/?api=http://localhost:8766/api/v1&ws=off` and save any key in `KEY`. Add `--candles` to act like a paid plan that includes historical candles. The key `bad` is rejected so you can test that path. The `api` and `ws` overrides only work when both the page and the endpoint are on `localhost`, so a crafted link can't send someone's key elsewhere.
 
 ## Deploy
 
@@ -72,17 +110,8 @@ The repo includes a GitHub Actions workflow (`.github/workflows/pages.yml`) that
 2. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
 3. Push again, or run the workflow from the **Actions** tab. The URL appears in the workflow summary.
 
-Any static host works too (Netlify, Vercel, Cloudflare Pages, S3). Upload the folder as is.
-
-## Ideas for contributions
-
-- Real data behind a pluggable adapter, so the simulator becomes one source among several
-- More functions: options chain, earnings calendar, economic calendar, portfolio
-- Drawing tools and indicators (RSI, MACD, Bollinger bands) on the price graph
-- Saved layouts and a light "paper" theme
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Any static host works too. Upload the folder as is. Embedded previews that block outside network requests can only run demo mode.
 
 ## License
 
-[MIT](LICENSE). IBM Plex is loaded from Google Fonts under the SIL Open Font License.
+[MIT](LICENSE). IBM Plex is loaded from Google Fonts under the SIL Open Font License. Market data belongs to Finnhub and its sources and is not covered by this license.

@@ -28,11 +28,11 @@ If you want to try binary or app analysis tools such as [REA](https://github.com
 ## What we left out on purpose
 
 - **Trademarks and trade dress.** Amberline has its own name, mark, colors and fictional instruments. It doesn't use any vendor's logo, keyboard design or screen layouts.
-- **Real market data.** Real prices need a licensed feed. The simulator keeps the demo free, offline-capable and safe to share. Nobody can mistake it for live quotes.
+- **Bundled market data.** Amberline never ships or stores vendor data. Live mode fetches real quotes and news from Finnhub with each viewer's own key, and demo mode uses fictional instruments, so the repo itself contains no third-party data.
 - **Messaging, trading and compliance features.** These are huge systems in their own right and aren't needed to show the interaction model.
 
 ## Where to take it next
 
-- A data adapter interface (`getQuote`, `getBars`, `subscribe`) so a licensed or free feed can replace the simulator
+- More data adapters behind `src/market.js` (the interface already separates Finnhub from the demo market)
 - User-defined monitors and saved workspaces
 - Chart studies and drawing tools
