@@ -72,7 +72,7 @@
         monitor: D.order.equity,
         world: byGroup('index'),
         cmdty: byGroup('cmdty'),
-        tape: ['AMX500', 'ATC100', 'CRVN', 'QSRX', 'PZMR', 'CDMF', 'ADMR', 'HLVB', 'EZ50', 'JP225', 'CL1', 'GC1', 'EURUSD', 'USDJPY', 'NBLN', 'SKVN', 'MRWD', 'VNTL']
+        tape: ['AMX500', 'ATC100', 'CRVN', 'QSRX', 'PZMR', 'CDMF', 'ADMR', 'HLVB', 'EZ50', 'JP225', 'CL1', 'GC1', 'EURUSD', 'USDJPY', 'BRCV', 'SKVN', 'MRWD', 'VNTL']
       },
       feed: () => ({ label: 'Simulated feed', state: 'demo' }),
       clock() {
@@ -108,7 +108,7 @@
           facts: [['Headquarters', i.hq], ['Founded', String(i.founded)], ['Employees', i.employees.toLocaleString('en-US')]],
           stats: {
             cap: () => i.sharesBn * 1e9 * i.last, sh: i.sharesBn * 1e9,
-            pe: i.pe ? () => i.pe * i.last / i.price : null, div: i.div ? () => i.div * i.price / i.last : 0,
+            pe: i.pe ? () => i.pe * i.last / i.price : null, eps: i.pe ? i.price / i.pe : null, div: i.div ? () => i.div * i.price / i.last : 0,
             beta: i.beta, hi52: hi, lo52: lo,
             avgVol: i.daily.slice(-31, -1).reduce((a, b) => a + b.v, 0) / 30
           },
@@ -136,7 +136,7 @@
       ['LLY', 'Eli Lilly'], ['UNH', 'UnitedHealth Group'], ['XOM', 'Exxon Mobil'], ['WMT', 'Walmart'], ['JNJ', 'Johnson & Johnson'],
       ['PG', 'Procter & Gamble'], ['KO', 'Coca-Cola'], ['NFLX', 'Netflix'], ['AMD', 'Advanced Micro Devices'], ['BA', 'Boeing']],
     world: [
-      ['Americas', [['SPY', 'S&P 500'], ['QQQ', 'Nasdaq-100'], ['DIA', 'Dow Jones 30'], ['IWM', 'Russell 2000'], ['EWC', 'Canada'], ['EWZ', 'Brazil'], ['EWW', 'Mexico']]],
+      ['Americas', [['SPY', 'S&P 500'], ['QQQ', 'Nasdaq-100'], ['DIA', 'Dow Jones Industrial Avg.'], ['IWM', 'Russell 2000'], ['EWC', 'Canada'], ['EWZ', 'Brazil'], ['EWW', 'Mexico']]],
       ['EMEA', [['EZU', 'Eurozone'], ['EWU', 'United Kingdom'], ['EWG', 'Germany'], ['EWQ', 'France'], ['EWL', 'Switzerland']]],
       ['Asia-Pacific', [['EWJ', 'Japan'], ['FXI', 'China large-cap'], ['EWH', 'Hong Kong'], ['EWA', 'Australia'], ['INDA', 'India'], ['EWY', 'South Korea']]]
     ],
@@ -175,54 +175,88 @@
     I.BIL.name = '1–3 month T-bill ETF';
     const groups = list => list.map(([label, rows]) => ({ label, syms: rows.map(r => r[0]) }));
 
-    // Sessions are keyed by their New York trading date.
-    const etDate = ms => { const p = {}; etParts.formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; }); return p.year + '-' + p.month + '-' + p.day; };
+    // Sessions are keyed by their New York trading date. Candles and the day's
+    // open/high/low only take regular-hours prices (09:30-16:00 ET); pre-market and
+    // after-hours trades move the last price and the tick chart only.
+    const etInfo = ms => { const p = {}; etParts.formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; }); return { day: p.year + '-' + p.month + '-' + p.day, mins: +p.hour * 60 + +p.minute }; };
+    const etDate = ms => etInfo(ms).day;
+    const regular = ms => { const m = etInfo(ms).mins; return m >= 570 && m < 960; };
     const utcDate = ms => new Date(ms).toISOString().slice(0, 10);
     const BAR = 5 * 60000;
 
-    // Fold one price into the chart series, starting a new bar when its time slot ends.
-    function mergePrice(i, p, ms) {
-      const day = etDate(ms);
-      const first = i.ticks[i.ticks.length - 1];
-      if (first && etDate(first.t) !== day) i.ticks = []; // the tick chart shows one session
+    function pushTick(i, p, ms) {
+      const prevTick = i.ticks[i.ticks.length - 1];
+      if (prevTick && etDate(prevTick.t) !== etDate(ms)) i.ticks = []; // the tick chart shows one session
       const lt = i.ticks[i.ticks.length - 1];
       if (lt && ms - lt.t < 1000) { lt.c = p; lt.h = Math.max(lt.h, p); lt.l = Math.min(lt.l, p); }
       else i.ticks.push({ t: ms, o: p, h: p, l: p, c: p, v: 0 });
       if (i.ticks.length > 3600) i.ticks.shift();
+    }
 
+    // 5-minute bars: extend the current slot, start the next one, or start a new session.
+    function mergeIntra(i, p, ms) {
       const intra = i.series['1D'];
       const b = intra && intra[intra.length - 1];
-      if (b && etDate(b.t) === day && ms >= b.t) {
-        if (ms >= b.t + BAR) intra.push({ t: ms - (ms % BAR), o: p, h: p, l: p, c: p, v: 0 });
-        else { b.c = p; b.h = Math.max(b.h, p); b.l = Math.min(b.l, p); }
-      }
+      if (!b || ms < b.t) return;
+      const fresh = { t: ms - (ms % BAR), o: p, h: p, l: p, c: p, v: 0 };
+      if (etDate(b.t) !== etDate(ms)) { i.series['1D'] = [fresh]; i.refIntra = i.prevClose; }
+      else if (ms >= b.t + BAR) intra.push(fresh);
+      else { b.c = p; b.h = Math.max(b.h, p); b.l = Math.min(b.l, p); }
+    }
+
+    // Daily bars: keep today's bar in step with the session's open, high, low and last.
+    function syncDaily(i) {
       const daily = i.series.D;
       const d = daily && daily[daily.length - 1];
-      if (d) {
-        const dd = utcDate(d.t);
-        if (dd === day) { d.c = p; d.h = Math.max(d.h, p); d.l = Math.min(d.l, p); }
-        else if (day > dd) daily.push({ t: Date.parse(day + 'T00:00:00Z'), o: p, h: p, l: p, c: p, v: 0 });
+      if (!d || !i.session || i.open == null) return;
+      const dd = utcDate(d.t);
+      const bar = { o: i.open, h: i.high, l: i.low, c: i.close != null ? i.close : i.last };
+      if (dd === i.session) Object.assign(d, bar);
+      else if (i.session > dd) daily.push(Object.assign({ t: Date.parse(i.session + 'T00:00:00Z'), v: 0 }, bar));
+    }
+
+    // A trade from a later trading day starts a new session for this symbol.
+    function rollover(i, day) {
+      if (i.session && day > i.session) {
+        i.prevClose = i.close != null ? i.close : i.last;
+        i.open = i.high = i.low = i.close = null;
       }
+      if (!i.session || day > i.session) i.session = day;
     }
 
     function applyQuote(i, q) {
       if (!q || (!q.c && !q.t)) { i.missing = true; return false; }
-      const qms = q.t * 1000;
+      const qms = q.t ? q.t * 1000 : Date.now();
+      const qday = etDate(qms);
+      i.quotedAt = Date.now();
+      i.missing = false;
+      // Streamed trades already moved this symbol into a newer session: the quote is stale.
+      if (i.session && qday < i.session) {
+        if (i.prevClose == null) i.prevClose = q.c; // that older session's close is today's reference
+        dirty = true;
+        return true;
+      }
       const prev = i.last;
       const tradeNewer = i.tradeAt > qms;
-      // A streamed trade is fresher than a quote that was cached before it arrived.
       if (!tradeNewer) {
         i.last = q.c;
         i.dir = prev == null || q.c === prev ? '' : q.c > prev ? 'up' : 'dn';
       }
-      // Finnhub's high and low already cover the quote's session, so they replace ours.
-      i.prevClose = q.pc; i.open = q.o; i.high = q.h; i.low = q.l;
-      if (tradeNewer && etDate(i.tradeAt) === etDate(qms)) { i.high = Math.max(i.high, i.last); i.low = Math.min(i.low, i.last); }
-      i.session = etDate(qms);
+      // Finnhub's open, high and low describe the quote's session, so they replace ours.
+      i.prevClose = q.pc; i.open = q.o || null; i.high = q.h || null; i.low = q.l || null;
+      i.close = q.c;
+      if (tradeNewer && regular(i.tradeAt) && etDate(i.tradeAt) === qday && i.high != null) {
+        i.high = Math.max(i.high, i.last); i.low = Math.min(i.low, i.last); i.close = i.last;
+      }
+      i.session = qday;
       i.dataAt = Math.max(qms, i.tradeAt || 0);
-      i.quotedAt = Date.now();
-      i.missing = false;
-      if (!tradeNewer) mergePrice(i, q.c, qms);
+      const intra = i.series['1D'];
+      if (intra && intra.length && etDate(intra[intra.length - 1].t) === qday) i.refIntra = q.pc;
+      if (!tradeNewer) {
+        pushTick(i, q.c, qms);
+        if (regular(qms)) mergeIntra(i, q.c, qms);
+      }
+      syncDaily(i);
       dirty = true;
       return true;
     }
@@ -253,12 +287,20 @@
       stream = fh.stream((s, p, v, ms) => {
         const i = I[s];
         if (!i || !(p > 0) || !(ms > 0)) return;
+        rollover(i, etDate(ms));
         i.dir = i.last == null || p === i.last ? i.dir : p > i.last ? 'up' : 'dn';
         i.last = p;
         i.tradeAt = ms;
         i.dataAt = Math.max(i.dataAt, ms);
-        if (i.session === etDate(ms) && i.high != null) { i.high = Math.max(i.high, p); i.low = Math.min(i.low, p); }
-        mergePrice(i, p, ms);
+        pushTick(i, p, ms);
+        if (regular(ms)) {
+          if (i.open == null) i.open = p;
+          i.high = i.high == null ? p : Math.max(i.high, p);
+          i.low = i.low == null ? p : Math.min(i.low, p);
+          i.close = p;
+          mergeIntra(i, p, ms);
+          syncDaily(i);
+        }
         dirty = true;
       }, st => { feedState = st; dirty = true; }, msg => { streamError = msg; dirty = true; });
     }
@@ -318,9 +360,9 @@
       },
       find(q) {
         return fh.search(q).then(r => (r && r.result ? r.result : [])
-          .filter(x => x.symbol && !x.symbol.includes('.') || /^[A-Z]+\.[A-Z]$/.test(x.symbol))
+          .filter(x => typeof x.symbol === 'string' && /^[A-Z][A-Z.]{0,5}$/.test(x.symbol))
           .slice(0, 8)
-          .map(x => ({ sym: x.symbol, name: x.description || x.symbol, kind: x.type === 'ETP' ? 'ETF' : 'Equity' })), () => []);
+          .map(x => ({ sym: x.symbol, name: String(x.description || x.symbol), kind: x.type === 'ETP' ? 'ETF' : 'Equity' })), () => []);
       },
       bars(sym, tf) {
         const i = I[sym];
@@ -341,19 +383,26 @@
             ? r.t.map((t, k) => ({ t: t * 1000, o: r.o[k], h: r.h[k], l: r.l[k], c: r.c[k], v: r.v ? r.v[k] : 0 }))
             : [];
           if (!bars.length) return ticks('Finnhub returned no bars for this range.');
+          // Series live on the instrument so every chart of it shares one copy that
+          // streamed prices keep current. Charts read them through closures, never a snapshot.
           if (intraday) {
-            const lastDay = etDay.format(bars[bars.length - 1].t);
-            bars = bars.filter(b => etDay.format(b.t) === lastDay);
+            const lastDay = etDate(bars[bars.length - 1].t);
+            bars = bars.filter(b => etDate(b.t) === lastDay);
             i.series['1D'] = bars;
-            return { kind: 'intraday', ref: () => i.prevClose, series: () => bars, xlabel: b => etTime.format(b.t), tlabel: b => etDay.format(b.t) + ' ' + etTime.format(b.t) + ' ET' };
+            i.refIntra = lastDay === i.session ? i.prevClose : null;
+            const b = bars[bars.length - 1];
+            if (lastDay === i.session && i.close != null) { b.c = i.close; b.h = Math.max(b.h, i.close); b.l = Math.min(b.l, i.close); }
+            return { kind: 'intraday', ref: () => i.refIntra, series: () => i.series['1D'] || [], xlabel: b2 => etTime.format(b2.t), tlabel: b2 => etDay.format(b2.t) + ' ' + etTime.format(b2.t) + ' ET' };
           }
           i.series.D = bars;
+          syncDaily(i);
           const len = SPANS[tf];
           const long = tf === '6M' || tf === '1Y';
+          const all = () => i.series.D || [];
           return {
             kind: 'daily',
-            series: () => bars.slice(Math.max(0, bars.length - len)),
-            ma: () => ({ src: bars, off: Math.max(0, bars.length - len) }),
+            series: () => all().slice(Math.max(0, all().length - len)),
+            ma: () => ({ src: all(), off: Math.max(0, all().length - len) }),
             xlabel: fmtDaily(long), tlabel: fmtDaily(false), monthly: long
           };
         }, err => {
@@ -429,6 +478,7 @@
       onTick: fn => listeners.push(fn),
       start() {
         startStream();
+        stream.set(visible); // subscribe whatever panels registered before the socket existed
         marketStatus();
         setInterval(marketStatus, 5 * 60e3);
         setInterval(schedule, 2000);

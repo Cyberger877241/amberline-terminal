@@ -4,7 +4,7 @@ Amberline started as a question: what makes the big professional market terminal
 
 ## Method: clean-room, public sources only
 
-This is a **user-experience teardown, not a software teardown.** No proprietary terminal software was installed, decompiled, disassembled, intercepted or scraped. Commercial terminals are licensed software, and their license terms generally forbid reverse engineering. The interaction patterns below are well known from public sources such as product marketing pages, published screenshots, trade-press articles and finance courses. All of Amberline's code, branding and demo data are original. Function mnemonics such as GP and DES follow conventions widely documented for professional terminals, including Bloomberg's, and are used descriptively. Live data comes from Finnhub.
+This is a **user-experience teardown, not a software teardown.** No proprietary terminal software was installed, decompiled, disassembled, intercepted or scraped. Commercial terminals are licensed software, and their license terms generally forbid reverse engineering. The interaction patterns below are well known from public sources such as product marketing pages, published screenshots, trade-press articles and finance courses. All of Amberline's code and branding, and the demo market's companies, prices and headlines, are original. Function mnemonics such as GP and DES follow conventions widely documented for professional terminals, including Bloomberg's, and are used descriptively. Live data comes from Finnhub.
 
 If you want to try binary or app analysis tools such as [REA](https://github.com/morluto/rea), use them on software you're authorized to inspect. Amberline's own source is a good target because it's MIT-licensed.
 

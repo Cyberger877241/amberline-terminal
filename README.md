@@ -9,7 +9,7 @@ There's no build step, no server and no dependencies.
 
 ![Amberline Terminal showing a price graph, world markets, top news and an equity monitor](docs/screenshot.png)
 
-> Amberline is an independent project. It is not affiliated with or endorsed by Bloomberg L.P., Finnhub or any exchange, and contains none of their code. Its function codes follow conventions widely documented for professional terminals. Market data may be delayed or incomplete. Nothing here is investment advice.
+> Amberline is an independent project. It is not affiliated with or endorsed by Bloomberg L.P., Finnhub or any exchange, and contains none of their code. Its function codes follow conventions widely documented for professional terminals, including Bloomberg's. S&P 500, Nasdaq-100, Dow Jones, Russell 2000 and Bloomberg are trademarks of their owners and are used only to describe what each ETF tracks or where a convention comes from. Market data may be delayed or incomplete. Nothing here is investment advice.
 
 ## Try it
 
@@ -84,6 +84,7 @@ src/market.js           one market interface with two implementations: live (Fin
 src/data.js             the demo market: fictional instruments, seeded random walk, headlines
 src/terminal.js         front end: command parser, autocomplete, panels, canvas charts
 src/terminal.css        the look: dark trading-screen palette, IBM Plex type
+tests/market.test.js    session-boundary tests for the live market (node tests/market.test.js)
 tools/mock_finnhub.py   a local stand-in for the Finnhub API, for development and tests
 docs/TEARDOWN.md        the design study behind the interface
 ```
@@ -112,7 +113,7 @@ The repo includes a GitHub Actions workflow (`.github/workflows/pages.yml`) that
 2. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
 3. Push again, or run the workflow from the **Actions** tab. The URL appears in the workflow summary.
 
-The workflow publishes only `index.html`, `src/` and `LICENSE`. Any static host works too. Embedded previews that block outside network requests can only run demo mode.
+The workflow publishes only `index.html`, `src/`, `LICENSE` and `.nojekyll`. Any static host works too. Embedded previews that block outside network requests can only run demo mode.
 
 ## License
 

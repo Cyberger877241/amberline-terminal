@@ -21,7 +21,11 @@
     const f = nfCache[d] || (nfCache[d] = new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
     return f.format(v);
   }
-  const signed = (v, d) => (!ok(v) ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v), d));
+  const signed = (v, d) => {
+    if (!ok(v)) return '—';
+    const r = +v.toFixed(d); // so -0.04 at one decimal reads 0.0, not −0.0
+    return (r > 0 ? '+' : r < 0 ? '−' : '') + fmt(Math.abs(r), d);
+  };
   const pctStr = v => (ok(v) ? signed(v, 2) + '%' : '—');
   const dirOf = v => (!ok(v) ? '' : v > 0 ? 'up' : v < 0 ? 'dn' : '');
   function big(v) {
@@ -136,7 +140,9 @@
     if (o.monthly) {
       for (let k = 1; k < n; k++) if (o.xlabel(bars[k]) !== o.xlabel(bars[k - 1])) marks.push(k);
       const thin = Math.ceil(marks.length / maxLabels);
-      marks = marks.filter((_, j) => j % thin === 0);
+      const jan = marks.findIndex(k => o.xlabel(bars[k]).includes("'"));
+      const anchor = jan < 0 ? 0 : jan % thin; // keep January, which carries the year
+      marks = marks.filter((_, j) => (j - anchor) % thin === 0);
     } else {
       const every = Math.max(1, Math.ceil(n / maxLabels));
       for (let k = 0; k < n; k += every) marks.push(k);
@@ -295,8 +301,8 @@
     chg: { k: 'chg', label: 'Net chg', num: 1, dir: 1, get: i => signed(chg(i), i.dec) },
     pct: { k: 'pct', label: '% chg', num: 1, dir: 1, get: i => pctStr(chgPct(i)) },
     bar: { k: 'bar', label: '', html: 1, dir: 1, get: i => pctBar(chgPct(i)) },
-    y1: { k: 'y1', label: '1Y %', num: 1, dirOf: i => i.last - i.daily[0].c, get: i => pctStr((i.last / i.daily[0].c - 1) * 100) },
-    vol: { k: 'vol', label: 'Volume', num: 1, get: i => big(M.day(i).v) },
+    y1: { k: 'y1', label: '1Y %', num: 1, opt: 1, dirOf: i => i.last - i.daily[0].c, get: i => pctStr((i.last / i.daily[0].c - 1) * 100) },
+    vol: { k: 'vol', label: 'Volume', num: 1, opt: 1, get: i => big(M.day(i).v) },
     rng: { k: 'rng', label: 'Day range', num: 1, cls: 'muted', opt: 1, get: i => { const d = M.day(i); return fmt(d.l, i.dec) + ' – ' + fmt(d.h, i.dec); } },
     unit: { k: 'unit', label: 'Unit', cls: 'muted', get: i => i.unit },
     ba: { k: 'ba', label: 'Bid × Ask', num: 1, cls: 'muted', opt: 1, get: i => { const s = Math.max(0.01, i.last * 0.00015); return fmt(i.last - s, i.dec) + ' × ' + fmt(i.last + s, i.dec); } },
@@ -772,9 +778,9 @@
       ol.innerHTML = items.map(n => `<li data-id="${esc(n.id)}" tabindex="0" role="button" class="${n.hot ? 'hot' : ''} ${n.born && t - n.born < 3 ? 'new' : ''}">
           <time>${esc(n.when)}</time><span class="src" title="${esc(n.src)}">${esc(n.src)}</span><span class="head">${esc(n.head)}</span><span class="tk">${esc(n.syms.join(' '))}</span></li>`).join('') ||
         `<li class="empty">${sym ? `No ${esc(sym)} headlines in the last week.` : 'No headlines right now.'}</li>`;
-      if (focused) {
+      if (focused && p.i === active) {
         const again = [...ol.children].find(li => li.dataset.id === focused);
-        if (again) again.focus();
+        if (again) again.focus({ preventScroll: true });
       }
     }
     function fetchNews() {
@@ -992,13 +998,13 @@
   }
 
   // Load a ticker that may not be in the market yet (live mode accepts any US ticker).
-  function open(p, fn, sym, extra) {
-    if (I[sym] && (!LIVE || I[sym].quotedAt)) return load(p, Object.assign({ fn, sym }, extra));
+  function open(p, fn, sym, extra, push = true) {
+    if (I[sym] && (!LIVE || I[sym].quotedAt)) return load(p, Object.assign({ fn, sym }, extra), push);
     status(`Looking up <b>${esc(sym)}</b>…`);
     const my = p.seq = (p.seq || 0) + 1;
     M.ensure(sym).then(() => {
       if (my !== p.seq) return; // the panel moved on while we waited
-      load(p, Object.assign({ fn, sym }, extra));
+      load(p, Object.assign({ fn, sym }, extra), push);
       status(`Panel ${p.i + 1}: ${esc(sym)} ${fn} · ${esc(FN[fn].name)}`);
     }, err => { if (my === p.seq) status(errText(err), 'err'); });
     return true;
@@ -1026,6 +1032,8 @@
     p.el.classList.toggle('max', on);
     grid.classList.toggle('has-max', on);
     p.el.querySelector('.pmax').setAttribute('aria-label', on ? 'Restore panel' : 'Maximize panel');
+    const f10 = fkeys.querySelector('[data-j="9"]');
+    if (f10) f10.lastChild.textContent = on ? 'Restore' : 'Maximize';
     setActive(p.i);
   }
 
@@ -1284,7 +1292,7 @@
     if (st && st.fn === 'STORY') st = { fn: st.sym ? 'NEWS' : 'TOP', sym: st.sym };
     const wantsLookup = LIVE && st && FN[st.fn] && FN[st.fn].sec === 'req' && typeof st.sym === 'string' && /^[A-Z][A-Z.]{0,5}$/.test(st.sym) && !I[st.sym];
     if (!load(p, valid(st) ? st : DEFAULT[k], false)) load(p, DEFAULT[k], false);
-    if (wantsLookup) open(p, st.fn, st.sym, st.fn === 'GP' && TFS.includes(st.tf) ? { tf: st.tf } : {});
+    if (wantsLookup) open(p, st.fn, st.sym, st.fn === 'GP' && TFS.includes(st.tf) ? { tf: st.tf } : {}, false);
   }
   setActive(saved && saved.active >= 0 && saved.active < 4 ? saved.active : 0);
   clock();

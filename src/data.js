@@ -65,7 +65,7 @@
     ['GRMR', 'Granmere Insurance Group', 'Insurance', 96.48, 0.21, 0.58, 12.8, 2.2, 0.74, 'Hartford, CT', 1849, 26000, 'Writes property, casualty and specialty commercial insurance.'],
     ['AXMD', 'Axiomar Defense', 'Aerospace & Defense', 205.60, 0.23, 0.27, 20.5, 1.7, 0.69, 'Arlington, VA', 1958, 52000, 'Supplies radar, missile-defense and satellite systems to government customers.'],
     ['CBKU', 'Clearbrook Utilities', 'Utilities', 71.30, 0.14, 0.49, 17.2, 3.8, 0.41, 'Phoenix, AZ', 1912, 6200, 'Regulated electric and water utility serving 2.3 million customers in the Southwest.'],
-    ['NBLN', 'Nebulon Robotics', 'Industrial Machinery', 113.85, 0.50, 0.33, 52.6, 0, 1.62, 'Pittsburgh, PA', 2015, 3800, 'Builds autonomous mobile robots and vision software for warehouses and factories.'],
+    ['BRCV', 'Briarcove Robotics', 'Industrial Machinery', 113.85, 0.50, 0.33, 52.6, 0, 1.62, 'Pittsburgh, PA', 2015, 3800, 'Builds autonomous mobile robots and vision software for warehouses and factories.'],
     ['PZMR', 'Prizmara Payments', 'Fintech', 167.20, 0.36, 0.79, 29.3, 0.4, 1.28, 'New York, NY', 2010, 12500, 'Processes card and real-time payments for online merchants in 40 countries.']
   ];
 
