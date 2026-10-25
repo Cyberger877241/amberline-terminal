@@ -28,7 +28,7 @@ If you want to try binary or app analysis tools such as [REA](https://github.com
 ## What we left out on purpose
 
 - **Trademarks and branding.** Amberline has its own name and mark, and uses no vendor's logo or keyboard artwork.
-- **Bundled or simulated market data.** Amberline never ships, stores or invents market data. Real quotes and news come from Finnhub at runtime with each viewer's own key, so the repo itself contains no third-party data.
+- **Bundled or simulated market data.** The app never ships, stores or invents market data; the development-only mock server in `tools/` is the sole exception, and the app labels it as made-up data whenever it's in use. Real quotes and news come from Finnhub at runtime with each viewer's own key, so the repo itself contains no third-party data.
 - **Messaging, trading and compliance features.** These are huge systems in their own right and aren't needed to show the interaction model.
 
 ## Where to take it next

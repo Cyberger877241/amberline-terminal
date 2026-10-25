@@ -9,7 +9,8 @@
 
   const M = window.AmberlineMarket;
   const I = M.inst;
-  const STORE_KEY = 'amberline.layout.' + M.mode + '.v2';
+  const STORE_KEY = 'amberline.layout.live.v2';
+  try { localStorage.removeItem('amberline.layout.demo.v2'); } catch (e) { /* storage unavailable */ }
   const TYPE_LABEL = { equity: 'Equity', etf: 'ETF', index: 'Index', cmdty: 'Commodity', fx: 'Currency' };
 
   // ---------- formatting ----------
@@ -512,7 +513,7 @@
         }
         if (pr.spark) { p.body.querySelector('.spark-box').hidden = false; spark(); }
         p.body.querySelector('.src-note').textContent = pr.error ? 'Profile unavailable: ' + pr.error.message
-          : 'Profile and statistics from Finnhub. Quotes update as trades stream in.';
+          : 'Profile and statistics from Finnhub. ' + (M.feed().state === 'live' ? 'Quotes update as trades stream in.' : 'Quotes refresh about once a minute.');
         update();
       }, err => { if (!dead) p.body.querySelector('.src-note').textContent = 'Profile unavailable: ' + (err && err.message || 'unknown error'); });
 
@@ -728,15 +729,15 @@
               ? 'This page is using the mock server on localhost. Every price, name and headline it serves is made up for testing.'
               : live
               ? 'Quotes, company profiles and headlines come from Finnhub using the key saved in this browser. Prices stream in during market hours and quotes refresh about once a minute.'
-              : 'Amberline shows real US stocks, ETFs and news from Finnhub. It needs your own Finnhub API key, and a free one takes a minute to get. Until you add one, the panels show tickers without prices.'}</p>
+              : 'Amberline shows real US stocks, ETFs and news from Finnhub. It needs your own Finnhub API key. Until you add one, the panels show tickers without prices.'}</p>
+            ${live ? '' : '<p>Get a free key at <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer">finnhub.io/register</a>, copy it from your dashboard and paste it below.</p>'}
           </section>
           ${live ? `<section><h3>Status</h3><dl class="keys status-list">
               <div><dt>Feed</dt><dd data-k="feed">…</dd></div>
               <div><dt>Requests</dt><dd data-k="req">…</dd></div>
               <div><dt>Historical charts</dt><dd data-k="candles">…</dd></div>
               <div><dt>Key</dt><dd data-k="auth">…</dd></div>
-            </dl></section>` : `<section><h3>Get a key</h3>
-              <p>1. Sign up at <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer">finnhub.io/register</a>. 2. Copy the API key from your dashboard. 3. Paste it below.</p></section>`}
+            </dl></section>` : ''}
           <section>
             <h3>${live ? 'Change key' : 'Your Finnhub API key'}</h3>
             <form class="keyform" autocomplete="off">
@@ -748,8 +749,8 @@
               </div>
               <p class="keymsg" role="status"></p>
             </form>
+            <p class="fine"><b>Sharing:</b> Finnhub's terms allow personal use only and forbid sharing its data, or results derived from it, without Finnhub's written approval. Before you present, screenshot, record or stream live data, get that approval or a plan licensed for display. See <a href="https://finnhub.io/terms-of-service" target="_blank" rel="noopener noreferrer">Finnhub's terms</a>.</p>
             <p class="fine">Your key is stored in this browser's local storage and is sent only to Finnhub. Anyone using this browser profile, and any other page on this site's address, can read it, so remove it on shared machines.</p>
-            <p class="fine"><b>Sharing:</b> Finnhub's terms limit its plans to personal use and forbid sharing its data, or results derived from it, with anyone without Finnhub's written approval. Get Finnhub's written approval before you present, screenshot or record live data. See <a href="https://finnhub.io/terms-of-service" target="_blank" rel="noopener noreferrer">Finnhub's terms</a>.</p>
           </section>
         </div>`;
       const form = p.body.querySelector('form');
@@ -814,7 +815,7 @@
           </section>
           <section>
             <h3>About the data</h3>
-            <p>Quotes, profiles, statistics and headlines come from Finnhub through your own API key. Market-wide views use US-listed ETFs as stand-ins for indices, commodities, currencies and Treasuries. Data may be delayed or incomplete. Nothing here is investment advice. Finnhub's terms limit its plans to personal use and forbid sharing its data, or results derived from it, with anyone without Finnhub's written approval.
+            <p>Quotes, profiles, statistics and headlines come from Finnhub through your own API key. Market-wide views use US-listed ETFs as stand-ins for indices, commodities, currencies and Treasuries. Data may be delayed or incomplete. Nothing here is investment advice. Finnhub's terms allow personal use only and forbid sharing its data, or results derived from it, without Finnhub's written approval. Before you present, screenshot, record or stream live data, get that approval or a plan licensed for display.
               Amberline is an independent project and is not affiliated with Bloomberg L.P., Finnhub or any exchange.</p>
           </section>
         </div>`;
@@ -1138,7 +1139,7 @@
     feedEl.lastChild.textContent = f.label;
     feedEl.dataset.state = f.state;
     const a = M.authError();
-    if (a) { banner.hidden = false; banner.innerHTML = `${esc(a.message)} Type <b>KEY</b> to ${M.hasKey ? 'update it' : 'add one'}.`; }
+    if (a) { banner.hidden = false; banner.innerHTML = esc(a.message) + (a.kind === 'nokey' ? '' : ' Type <b>KEY</b> to update it.'); }
     else if (!M.mock) banner.hidden = true;
   }
   if (M.mock) {
@@ -1179,7 +1180,7 @@
   updateTape();
   status(M.hasKey
     ? 'Type any US ticker and a function, then press <b>Enter</b>. Try <b>NVDA GP 1Y</b>, <b>MSFT DES</b> or <b>TOP</b>.'
-    : 'Add your free Finnhub key in panel 1 to load real prices, charts and news. Then try <b>NVDA GP 1Y</b>.');
+    : 'Type <b>KEY</b> to add your free Finnhub key and load real prices, charts and news. Then try <b>NVDA GP 1Y</b>.');
 
   M.onTick(() => {
     panels.forEach(p => { if (p.ctl.tick) p.ctl.tick(); retitle(p); });

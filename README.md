@@ -6,9 +6,11 @@ Every company and price is real: US stocks, ETFs and market news come from [Finn
 
 There's no build step, no server and no dependencies.
 
+> **Before you show it to anyone:** Finnhub's terms allow personal use only and forbid sharing its data, or results derived from it, without Finnhub's written approval. Before you present, screenshot, record or stream live data, get that approval or a plan licensed for display. Otherwise show only the no-key screen.
+
 ![Amberline Terminal on first launch, asking for a Finnhub key next to real tickers](docs/screenshot.png)
 
-> Amberline is an independent project. It is not affiliated with or endorsed by Bloomberg L.P., Finnhub or any exchange, and contains none of their code. Its function codes follow conventions widely documented for professional terminals, including Bloomberg's. S&P 500, Nasdaq-100, Dow Jones, Russell 2000 and Bloomberg are trademarks of their owners and are used only to describe what each ETF tracks or where a convention comes from. Market data may be delayed or incomplete. Nothing here is investment advice.
+> Amberline is an independent project. It is not affiliated with or endorsed by Bloomberg L.P., Finnhub or any exchange, and contains none of their code. Its function codes follow conventions widely documented for professional terminals, including Bloomberg's. S&P 500, Nasdaq-100, Dow Jones, Russell 2000 and Bloomberg are trademarks of their owners and are used only to describe what each ETF tracks or where a convention comes from. Company names and ticker symbols belong to their owners and are used only to identify securities. Market data may be delayed or incomplete. Nothing here is investment advice.
 
 ## Try it
 

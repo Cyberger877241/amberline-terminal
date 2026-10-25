@@ -385,7 +385,7 @@
           if (P.name && !i.proxy) { i.name = String(P.name); dirty = true; }
           const pick = (...ks) => { for (const k of ks) if (Mx[k] != null && isFinite(Mx[k])) return +Mx[k]; return null; };
           const facts = [];
-          if (i.proxy) facts.push(['Tracks', i.proxy + (i.duration ? ' · avg. duration ' + i.duration + ' yrs' : '')]);
+          if (i.proxy) facts.push(['Tracks', i.proxy + (i.duration ? ' · duration about ' + i.duration + ' yrs (approx.)' : '')]);
           if (P.exchange) facts.push(['Exchange', String(P.exchange)]);
           if (P.country) facts.push(['Country', String(P.country)]);
           if (P.ipo) facts.push(['Listed', String(P.ipo)]);
@@ -458,7 +458,7 @@
   // ---------------------------------------------------------------- boot
   // Without a key, every request fails with a "nokey" error that the panels explain.
   function noKeyClient(FinnhubError) {
-    const fail = () => Promise.reject(new FinnhubError('nokey', "No Finnhub API key yet, so real prices, charts and news can't load."));
+    const fail = () => Promise.reject(new FinnhubError('nokey', "No Finnhub API key yet, so real prices, charts and news can't load. Type KEY to add one."));
     return {
       budget: () => ({ used: 0, perMinute: 50, queued: 0 }),
       quote: fail, profile: fail, metrics: fail, peers: fail, marketNews: fail, companyNews: fail,

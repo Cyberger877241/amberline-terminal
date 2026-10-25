@@ -13,7 +13,7 @@
   const DEFAULT_WS = 'wss://ws.finnhub.io';
 
   class FinnhubError extends Error {
-    // kind: auth | premium | rate | notfound | network | http
+    // kind: auth | premium | rate | notfound | network | http | nokey
     constructor(kind, message, status) {
       super(message);
       this.kind = kind;
