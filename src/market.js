@@ -1,10 +1,10 @@
 /*
  * Amberline Terminal: the market the panels read from.
  *
- * Two implementations share one interface:
- *   live  real US stocks and ETFs from Finnhub, using the viewer's own API key
- *   demo  fictional securities from data.js, used when no key is saved
- * The terminal never talks to a data source directly, only to this object.
+ * Every instrument is a real US stock or ETF, priced by Finnhub through the
+ * viewer's own API key. Without a key the market still lists the real tickers but
+ * has no prices; nothing is ever simulated. The terminal never talks to a data
+ * source directly, only to this object.
  */
 (function (root) {
   'use strict';
@@ -53,78 +53,6 @@
     const p = {};
     etParts.formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
     return { wd: p.weekday, mins: +p.hour * 60 + +p.minute, date: p.year + '-' + p.month + '-' + p.day };
-  }
-
-  // ---------------------------------------------------------------- demo
-  function demoMarket(D) {
-    const I = D.inst;
-    const byGroup = type => {
-      const g = {};
-      D.order[type].forEach(s => { (g[I[s].group] = g[I[s].group] || []).push(s); });
-      return Object.keys(g).map(label => ({ label, syms: g[label] }));
-    };
-    const newsItem = n => ({ id: n.id, t: n.t, when: hhmm(n.t), src: n.src, head: n.head, body: n.body, url: null, syms: n.syms, hot: n.hot, born: n.born });
-    return {
-      mode: 'demo',
-      demo: D,
-      inst: I,
-      universe: {
-        monitor: D.order.equity,
-        world: byGroup('index'),
-        cmdty: byGroup('cmdty'),
-        tape: ['AMX500', 'ATC100', 'CRVN', 'QSRX', 'PZMR', 'CDMF', 'ADMR', 'HLVB', 'EZ50', 'JP225', 'CL1', 'GC1', 'EURUSD', 'USDJPY', 'BRCV', 'SKVN', 'MRWD', 'VNTL']
-      },
-      feed: () => ({ label: 'Simulated feed', state: 'demo' }),
-      clock() {
-        const t = D.simNow(), open = t < D.SESSION_CLOSE;
-        return { time: hhmm(t), prefix: 'Session', state: open ? 'Market open' : 'After hours', open };
-      },
-      day(i) { const b = i.daily[i.daily.length - 1]; return { o: i.open, h: b.h, l: b.l, v: b.v }; },
-      ensure(sym) { return I[sym] ? Promise.resolve(I[sym]) : Promise.reject(new Error(`${sym} isn't in the demo universe. Type MON to see the tickers you can use.`)); },
-      find(q) { return Promise.resolve([]); },
-      bars(sym, tf) {
-        const i = I[sym];
-        if (tf === '1D') {
-          return Promise.resolve({ kind: 'intraday', ref: () => i.prevClose, series: () => i.intra, xlabel: b => hhmm(b.t), tlabel: b => hhmm(b.t) + ' ET' });
-        }
-        const len = { '1M': 22, '3M': 63, '6M': 126, '1Y': 252 }[tf];
-        const long = tf === '6M' || tf === '1Y';
-        const local = long ? { format: t => monthLabel(new Date(t).getMonth(), new Date(t).getFullYear()) } : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-        const dayLbl = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-        return Promise.resolve({
-          kind: 'daily',
-          series: () => i.daily.slice(Math.max(0, i.daily.length - len)),
-          ma: () => ({ src: i.daily, off: Math.max(0, i.daily.length - len) }),
-          xlabel: b => local.format(b.t), tlabel: b => dayLbl.format(b.t), monthly: long
-        });
-      },
-      profile(sym) {
-        const i = I[sym];
-        if (i.type !== 'equity') return Promise.resolve({ sector: i.group, facts: [['Quote unit', i.unit]], stats: {}, peers: D.order[i.type].filter(x => x !== sym && I[x].group === i.group).slice(0, 5), source: 'Simulated' });
-        let lo = Infinity, hi = -Infinity;
-        i.daily.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); });
-        return Promise.resolve({
-          sector: i.sector, about: i.about,
-          facts: [['Headquarters', i.hq], ['Founded', String(i.founded)], ['Employees', i.employees.toLocaleString('en-US')]],
-          stats: {
-            cap: () => i.sharesBn * 1e9 * i.last, sh: i.sharesBn * 1e9,
-            pe: i.pe ? () => i.pe * i.last / i.price : null, eps: i.pe ? i.price / i.pe : null, div: i.div ? () => i.div * i.price / i.last : 0,
-            beta: i.beta, hi52: hi, lo52: lo,
-            avgVol: i.daily.slice(-31, -1).reduce((a, b) => a + b.v, 0) / 30
-          },
-          spark: () => i.daily.map(b => b.c),
-          peers: D.order.equity.filter(x => x !== sym && I[x].sector === i.sector).concat(D.order.equity.filter(x => x !== sym)).filter((x, k, a) => a.indexOf(x) === k).slice(0, 5),
-          source: 'Simulated'
-        });
-      },
-      news(sym) { return Promise.resolve(D.news.filter(n => !sym || n.syms.includes(sym)).slice(0, 60).map(newsItem)); },
-      newsVersion: () => (D.news.length ? D.news[0].id : 0),
-      story(id) { const n = D.news.find(x => String(x.id) === String(id)); return n ? newsItem(n) : null; },
-      ticks: () => D.ticks(),
-      watch() {},
-      onTick: fn => D.onTick(fn),
-      start: () => D.start()
-    };
   }
 
   // ---------------------------------------------------------------- live
@@ -289,14 +217,16 @@
       return true;
     }
 
+    const blocking = err => !!err && (err.kind === 'auth' || err.kind === 'nokey');
+
     function refresh(i, pri) {
-      return fh.quote(i.sym, pri).then(q => applyQuote(i, q), err => { if (err.kind === 'auth') status = err; });
+      return fh.quote(i.sym, pri).then(q => applyQuote(i, q), err => { if (blocking(err)) status = err; });
     }
 
     // Quote scheduler: fill in symbols that are on screen first, then keep them fresh,
     // leaving headroom in the per-minute budget for charts, profiles and news.
     function schedule() {
-      if (status && status.kind === 'auth') return; // a rejected key won't start working on its own
+      if (blocking(status)) return; // a missing or rejected key won't start working on its own
       const b = fh.budget();
       let room = Math.max(0, b.perMinute - 14 - b.used - b.queued);
       if (!room) return;
@@ -338,7 +268,7 @@
     }
 
     function marketStatus() {
-      fh.marketStatus().then(s => { status = status && status.kind === 'auth' ? status : null; market = s; }, () => {});
+      fh.marketStatus().then(s => { status = blocking(status) ? status : null; market = s; }, () => {});
     }
     let market = null;
 
@@ -356,11 +286,12 @@
         fx: LIVE.fx.map(r => r[0]),
         tape: LIVE.tape
       },
-      authError: () => (status && status.kind === 'auth' ? status : null),
+      authError: () => (blocking(status) ? status : null),
       streamError: () => streamError,
       requests: () => fh.budget(),
       candles: () => candlesAllowed,
       feed() {
+        if (!api.hasKey) return { label: 'No API key · not connected', state: 'poll' };
         const src = api.mock ? 'Mock API' : 'Finnhub';
         const label = src + (feedState === 'open' ? ' · streaming' : feedState === 'connecting' ? ' · connecting' : ' · polling');
         return { label, state: feedState === 'open' ? 'live' : 'poll' };
@@ -503,7 +434,6 @@
       },
       newsVersion: () => Math.floor(Date.now() / (4 * 60e3)), // refetch headlines every 4 minutes
       story: id => newsCache.get(String(id)) || null,
-      ticks: () => 0,
       watch(syms) {
         const next = [...new Set(syms.filter(s => I[s]))];
         if (next.join() === visible.join()) return;
@@ -526,17 +456,23 @@
   }
 
   // ---------------------------------------------------------------- boot
-  const key = readKey();
-  let market;
-  if (key && root.Finnhub) {
-    const dev = devEndpoints();
-    const fh = root.Finnhub.create(Object.assign({ key }, dev));
-    market = liveMarket(fh, root.Finnhub.FinnhubError);
-    market.endpoint = dev.api || root.Finnhub.DEFAULT_API;
-    market.mock = !!dev.api; // the local mock server serves made-up data
-  } else {
-    market = demoMarket(root.AmberlineData);
+  // Without a key, every request fails with a "nokey" error that the panels explain.
+  function noKeyClient(FinnhubError) {
+    const fail = () => Promise.reject(new FinnhubError('nokey', "No Finnhub API key yet, so real prices, charts and news can't load."));
+    return {
+      budget: () => ({ used: 0, perMinute: 50, queued: 0 }),
+      quote: fail, profile: fail, metrics: fail, peers: fail, marketNews: fail, companyNews: fail,
+      candles: fail, search: fail, marketStatus: fail,
+      stream(onTrade, onState) { onState('off'); return { set() {}, close() {} }; }
+    };
   }
+
+  const key = readKey();
+  const dev = key ? devEndpoints() : {};
+  const fh = key ? root.Finnhub.create(Object.assign({ key }, dev)) : noKeyClient(root.Finnhub.FinnhubError);
+  const market = liveMarket(fh, root.Finnhub.FinnhubError);
+  market.endpoint = dev.api || root.Finnhub.DEFAULT_API;
+  market.mock = !!dev.api; // the local mock server serves made-up data
   market.hasKey = !!key;
   market.setKey = k => { const ok = writeKey(k); return ok; };
   root.AmberlineMarket = market;

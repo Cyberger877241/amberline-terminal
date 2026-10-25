@@ -8,21 +8,21 @@
 <!-- page:start -->
 <title>Amberline Terminal</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="A browser-based, multi-panel market terminal with a command line, charts and news. Real US market data with your own Finnhub key, or a fictional demo market.">
+<meta name="description" content="A browser-based, multi-panel market terminal with a command line, charts and news for real US stocks and ETFs, using your own Finnhub key.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="src/terminal.css?v=4">
+<link rel="stylesheet" href="src/terminal.css?v=5">
 <!-- head:end -->
 </head>
 <body>
 <div class="app">
   <header class="topbar">
     <div class="brand"><span class="mark" aria-hidden="true">A</span><span class="word">Amberline</span><span class="sub">Terminal</span></div>
-    <div class="feed" id="feed" data-state="demo"><span class="dot" aria-hidden="true"></span><span>Simulated feed</span></div>
+    <div class="feed" id="feed" data-state="poll"><span class="dot" aria-hidden="true"></span><span>Connecting</span></div>
     <div class="clocks">
-      <span><span id="clockPrefix">Session</span> <b id="simClock">--:--</b> ET</span>
-      <span id="mktState" class="state">Market open</span>
+      <span><span id="clockPrefix">New York</span> <b id="simClock">--:--</b> ET</span>
+      <span id="mktState" class="state closed">Checking</span>
       <span id="dateLbl"></span>
     </div>
   </header>
@@ -50,10 +50,9 @@
   <footer class="tape" aria-label="Ticker tape"><div class="tape-track" id="tape"></div></footer>
 </div>
 <noscript><p style="padding:16px">Amberline Terminal needs JavaScript to run.</p></noscript>
-<script src="src/data.js?v=4"></script>
-<script src="src/finnhub.js?v=4"></script>
-<script src="src/market.js?v=4"></script>
-<script src="src/terminal.js?v=4"></script>
+<script src="src/finnhub.js?v=5"></script>
+<script src="src/market.js?v=5"></script>
+<script src="src/terminal.js?v=5"></script>
 <!-- page:end -->
 </body>
 </html>

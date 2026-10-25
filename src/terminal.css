@@ -239,9 +239,6 @@ kbd { font: 600 10.5px var(--font-data); background: var(--key); color: var(--in
 .pbar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
 .pbar i { position: absolute; top: 0; bottom: 0; background: currentColor; }
 .spk { display: block; }
-.fxc caption { caption-side: bottom; text-align: left; color: var(--muted); padding: 8px; font: 12px var(--font-label); }
-.fxc .rowh { position: sticky; left: 0; color: var(--amber); background: var(--panel); font: 500 12px var(--font-data); letter-spacing: 0; }
-.fxc .diag { color: var(--rule); text-align: center; }
 .link { background: none; border: 0; padding: 0; color: var(--amber); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 
 @container (max-width: 700px) { .qt .opt { display: none; } }
@@ -306,10 +303,6 @@ kbd { font: 600 10.5px var(--font-data); background: var(--key); color: var(--in
 
 /* ---------- yield curve ---------- */
 .crv-top .label { margin-right: auto; }
-.key { display: flex; align-items: center; gap: 6px; color: var(--muted); font: 500 11px var(--font-label); text-transform: uppercase; letter-spacing: .06em; }
-.key i { width: 16px; height: 0; border-top: 2px solid var(--amber); }
-.key .k-m1 { border-top: 2px dotted var(--link); }
-.key .k-y1 { border-top: 2px dashed var(--muted); }
 .crv .chart { min-height: 110px; }
 .crv-tbl { flex: none; max-height: 45%; overflow: auto; border-top: 1px solid var(--rule); }
 
@@ -361,9 +354,7 @@ kbd { font: 600 10.5px var(--font-data); background: var(--key); color: var(--in
 .news .head { font: 13px/1.4 var(--font-label); }
 .news li.hot .head { color: var(--amber); }
 .news .tk { color: var(--muted); font-size: 11px; }
-.news li.new { animation: newrow 3s ease-out; }
 .news li.empty { display: block; color: var(--muted); cursor: default; font-family: var(--font-label); }
-@keyframes newrow { from { background: var(--amber-wash); } to { background: transparent; } }
 @container (max-width: 460px) {
   .news li { grid-template-columns: 40px minmax(0, 1fr); }
   .news .src, .news .tk { display: none; }
@@ -421,7 +412,7 @@ kbd { font: 600 10.5px var(--font-data); background: var(--key); color: var(--in
 
 @media (prefers-reduced-motion: reduce) {
   .tape { overflow-x: auto; }
-  .tape-track, .dot, .fl-up, .fl-dn, .news li.new { animation: none; }
+  .tape-track, .dot, .fl-up, .fl-dn { animation: none; }
 }
 
 /* ---------- data-source states ---------- */
