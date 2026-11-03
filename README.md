@@ -78,6 +78,8 @@ Finnhub's terms limit its plans to personal use and forbid sharing its data, or 
 
 ## How it works
 
+![System design: the browser UI, the market layer, the Finnhub client and session engine, and the outside services they reach](docs/system-design.png)
+
 ```
 index.html              page shell: top bar, command line, panel grid, function keys, tape
 src/finnhub.js          Finnhub client: rate-limited queue, cache, error types, WebSocket stream
@@ -87,6 +89,7 @@ src/terminal.css        the look: dark trading-screen palette, IBM Plex type
 tests/market.test.js    session-boundary tests for the live market (node tests/market.test.js)
 tools/mock_finnhub.py   a local stand-in for the Finnhub API, for development and tests
 docs/TEARDOWN.md        the design study behind the interface
+docs/system-design.png  the system design chart above
 ```
 
 **The market** (`src/market.js`) is the only thing panels talk to. It exposes instruments, `bars()`, `profile()`, `news()`, `find()` and a once-a-second tick. It is built on the Finnhub client. Without a saved key, every request fails with a clear "no key" message, so panels show real tickers with no prices. Panels tell the market which symbols are on screen, so those get streamed and refreshed first.
