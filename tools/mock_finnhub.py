@@ -41,20 +41,29 @@ def quote(sym):
             "l": round(min(c, o) * 0.994, 2), "o": o, "pc": pc, "t": int(time.time())}
 
 
+EPOCH = 1704067200  # 2024-01-01: walks start here, so overlapping ranges agree
+
+
 def candles(sym, res, frm, to):
+    """Weekday bars from a seeded walk, scaled so the latest close equals the quote's previous close."""
     step = 300 if res == "5" else 86400
-    t = frm - frm % step
-    r = rng_for(sym, res)
-    p = base_price(sym) * 0.8
-    out = {"o": [], "h": [], "l": [], "c": [], "v": [], "t": [], "s": "ok"}
+    start = EPOCH if step == 86400 else frm - frm % 86400
+    bars, p, t = [], 1.0, start - start % step
     while t <= to:
-        o = p
-        p = p * math.exp(r.gauss(0.0002, 0.015 if step == 86400 else 0.002))
-        out["o"].append(round(o, 2)); out["c"].append(round(p, 2))
-        out["h"].append(round(max(o, p) * 1.004, 2)); out["l"].append(round(min(o, p) * 0.996, 2))
-        out["v"].append(int(r.uniform(2e5, 4e6))); out["t"].append(t)
+        if time.gmtime(t).tm_wday < 5:
+            r = rng_for(sym, res, t)
+            o = p
+            p = p * math.exp(r.gauss(0.0003, 0.015 if step == 86400 else 0.0015))
+            ext = abs(r.gauss(0, 0.004 if step == 86400 else 0.0008))
+            vol = int(r.uniform(2e7, 6e7) if step == 86400 else r.uniform(5e4, 6e5))
+            bars.append((t, o, max(o, p) * (1 + ext), min(o, p) * (1 - ext), p, vol))
         t += step
-    return out
+    if not bars:
+        return {"s": "no_data"}
+    k = base_price(sym) / bars[-1][4]
+    keep = [b for b in bars if b[0] >= frm]
+    return {"s": "ok", "t": [b[0] for b in keep], "o": [round(b[1] * k, 2) for b in keep], "h": [round(b[2] * k, 2) for b in keep],
+            "l": [round(b[3] * k, 2) for b in keep], "c": [round(b[4] * k, 2) for b in keep], "v": [b[5] for b in keep]}
 
 
 def news(sym):
