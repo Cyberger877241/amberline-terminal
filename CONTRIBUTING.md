@@ -47,4 +47,4 @@ Then visit `http://localhost:8000/?api=http://localhost:8766/api/v1&ws=off` and 
 - Check the page at phone width (about 375px). The page itself must never scroll sideways.
 - Keep it dependency-free unless a library does substantial work.
 - When a release changes anything in `src/`, bump the `?v=` number on every asset URL in `index.html` so browsers don't mix cached and new files.
-- Run `node tests/market.test.js` before you open a pull request.
+- Run `node tests/market.test.js` and `node tests/astral.test.js` before you open a pull request.

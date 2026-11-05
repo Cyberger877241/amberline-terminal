@@ -513,7 +513,7 @@
         }
         if (pr.spark) { p.body.querySelector('.spark-box').hidden = false; spark(); }
         p.body.querySelector('.src-note').textContent = pr.error ? 'Profile unavailable: ' + pr.error.message
-          : 'Profile and statistics from Finnhub. ' + (M.feed().state === 'live' ? 'Quotes update as trades stream in.' : 'Quotes refresh about once a minute.');
+          : 'Profile and statistics from ' + M.source + '. ' + (M.feed().state === 'live' ? 'Quotes update as trades stream in.' : 'Quotes refresh about once a minute.');
         update();
       }, err => { if (!dead) p.body.querySelector('.src-note').textContent = 'Profile unavailable: ' + (err && err.message || 'unknown error'); });
 
@@ -660,7 +660,7 @@
 
   function newsMount(p, sym) {
     p.body.innerHTML = '<ol class="news" aria-busy="true"><li class="empty">Loading headlines…</li></ol>' +
-      '<p class="tbl-note">Headlines and summaries from Finnhub and its publishers. Amberline doesn\'t write or verify them.</p>';
+      (M.source === 'Astral' ? '<p class="tbl-note">Company news shows recent SEC filings from Astral, linked to the filing on sec.gov.</p>' : '<p class="tbl-note">Headlines and summaries from Finnhub and its publishers. Amberline doesn\'t write or verify them.</p>');
     const ol = p.body.firstChild;
     let dead = false, loading = false;
     function render(items) {
@@ -703,7 +703,7 @@
           <h3>${esc(n.head)}</h3>
           ${n.body.map(b => `<p>${esc(b)}</p>`).join('') || '<p class="muted">No summary was provided with this headline.</p>'}
           ${n.url ? `<p><a class="read" href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">Read the full story at ${esc(n.src)} ↗</a></p>` : ''}
-          <p class="note">Headline and summary from Finnhub and the publisher named above. Amberline doesn\'t write or verify news.</p>
+          <p class="note">${M.source === 'Astral' ? 'Filing details from Astral. Open the filing on sec.gov for the full document.' : 'Headline and summary from Finnhub and the publisher named above. Amberline doesn\'t write or verify news.'}</p>
           ${n.syms.length ? `<div class="chips"><span class="label">Securities</span>${n.syms.map(x => `<button type="button" class="chip" data-sym="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
         </article>`;
       }
@@ -724,9 +724,11 @@
       p.body.innerHTML = `
         <div class="help keypage">
           <section>
-            <h3>${!live ? 'No data source connected' : M.mock ? 'Connected to the local mock API' : 'Connected to Finnhub'}</h3>
+            <h3>${!live ? 'No data source connected' : M.mock ? 'Connected to the local mock API' : 'Connected to ' + M.source}</h3>
             <p>${live && M.mock
               ? 'This page is using the mock server on localhost. Every price, name and headline it serves is made up for testing.'
+              : live && M.source === 'Astral'
+              ? 'Quotes, charts and SEC filings come from your Astral connector on claude.ai. To use Finnhub instead, add a key below.'
               : live
               ? 'Quotes, company profiles and headlines come from Finnhub using the key saved in this browser. Prices stream in during market hours and quotes refresh about once a minute.'
               : 'Amberline shows real US stocks, ETFs and news from Finnhub. It needs your own Finnhub API key. Until you add one, the panels show tickers without prices.'}</p>
@@ -1148,6 +1150,8 @@
   }
   document.getElementById('disclaim').textContent = M.mock
     ? 'Mock API on localhost: made-up data for testing.'
+    : M.source === 'Astral'
+    ? 'Market data from Astral through your claude.ai connector. May be delayed. Not investment advice.'
     : 'Market data and news from Finnhub, for personal use. May be delayed. Not investment advice.';
 
   const TAPE = M.universe.tape;

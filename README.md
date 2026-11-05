@@ -2,7 +2,7 @@
 
 A professional-style market terminal that runs in your browser. It has a command line with autocomplete, four independent panels, candlestick charts, company profiles, news, function keys and a scrolling ticker tape.
 
-Every company and price is real: US stocks, ETFs and market news come from [Finnhub](https://finnhub.io) through your own free API key. Nothing is simulated. Without a key, the terminal lists the real tickers and asks for one instead of making up prices.
+Every company and price is real: US stocks, ETFs and market news come from [Finnhub](https://finnhub.io) through your own free API key, or, when the terminal is opened on claude.ai, from your Astral connector (see [Astral plugin](#astral-plugin)). Nothing is simulated. Without a key, the terminal lists the real tickers and asks for one instead of making up prices.
 
 There's no build step, no server and no dependencies.
 
@@ -83,10 +83,12 @@ Finnhub's terms limit its plans to personal use and forbid sharing its data, or 
 ```
 index.html              page shell: top bar, command line, panel grid, function keys, tape
 src/finnhub.js          Finnhub client: rate-limited queue, cache, error types, WebSocket stream
+src/astral.js           Astral plugin: the same calls, answered by your claude.ai Astral connector
 src/market.js           the market the panels read from: real instruments, sessions, charts, news
 src/terminal.js         front end: command parser, autocomplete, panels, canvas charts
 src/terminal.css        the look: dark trading-screen palette, IBM Plex type
 tests/market.test.js    session-boundary tests for the live market (node tests/market.test.js)
+tests/astral.test.js    tests for the Astral plugin (node tests/astral.test.js)
 tools/mock_finnhub.py   a local stand-in for the Finnhub API, for development and tests
 docs/TEARDOWN.md        the design study behind the interface
 docs/system-design.png  the system design chart above
@@ -97,6 +99,23 @@ docs/system-design.png  the system design chart above
 **The Finnhub client** (`src/finnhub.js`) queues requests by priority and keeps them under the per-minute limit. It shares one request between callers asking for the same thing, caches results for a short time, and turns HTTP errors into clear kinds (`auth`, `premium`, `rate`, `network`, `nokey`). A request that hits the rate limit is retried once, 5 seconds later.
 
 **The front end** (`src/terminal.js`). Each function (`GP`, `DES`, `WEI` and the rest) is a small module with a `mount` method that builds the panel and a `tick` method that updates only the cells that changed. Charts are drawn on `<canvas>`. News text from the API is always inserted as text, never as HTML, and only `http(s)` links are shown.
+
+## Astral plugin
+
+`src/astral.js` lets the terminal read real market data through Astral when it runs as an artifact on claude.ai. The page calls your Astral connector with the artifact `mcp` capability, so it uses your own Astral login and never sees a token.
+
+```
+panel → market.js → astral.js → claude.use("mcp") → your Astral connector
+```
+
+| Terminal call | Astral tool |
+| --- | --- |
+| Quotes (batched, many symbols per request) | `astral_research_full_quote_list` |
+| `GP` charts (5-minute and daily bars) | `astral_price_get` |
+| `NEWS` (company filings, linked to sec.gov) | `astral_research_sec_filings` |
+| Ticker search in autocomplete | `astral_symbol_resolve` |
+
+A saved Finnhub key always wins. Outside claude.ai (GitHub Pages, a local copy) there is no connector, so the plugin stays off. Astral doesn't provide market headlines or a live trade stream, so `TOP` explains that, and quotes refresh about once a minute. Each viewer needs Astral connected in claude.ai Settings, Connectors. Check Astral's terms before you show its data to an audience.
 
 ## Develop without a key
 
@@ -116,7 +135,7 @@ The repo includes a GitHub Actions workflow (`.github/workflows/pages.yml`) that
 2. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
 3. Push again, or run the workflow from the **Actions** tab. The URL appears in the workflow summary.
 
-The workflow publishes only `index.html`, `src/`, `LICENSE` and `.nojekyll`. Any static host works too. Embedded previews that block outside network requests can't load market data; they show the tickers and the key prompt only.
+The workflow publishes only `index.html`, `src/`, `LICENSE` and `.nojekyll`. Any static host works too. Embedded previews that block outside network requests can't reach Finnhub. On claude.ai the Astral plugin supplies data instead.
 
 ## License
 

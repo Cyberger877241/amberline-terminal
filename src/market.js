@@ -2,7 +2,8 @@
  * Amberline Terminal: the market the panels read from.
  *
  * Every instrument is a real US stock or ETF, priced by Finnhub through the
- * viewer's own API key. Without a key the market still lists the real tickers but
+ * viewer's own API key, or on claude.ai by the viewer's Astral connector
+ * (astral.js). Without a key the market still lists the real tickers but
  * has no prices; nothing is ever simulated. The terminal never talks to a data
  * source directly, only to this object.
  */
@@ -292,7 +293,7 @@
       candles: () => candlesAllowed,
       feed() {
         if (!api.hasKey) return { label: 'No API key · not connected', state: 'poll' };
-        const src = api.mock ? 'Mock API' : 'Finnhub';
+        const src = api.source || 'Finnhub';
         const label = src + (feedState === 'open' ? ' · streaming' : feedState === 'connecting' ? ' · connecting' : ' · polling');
         return { label, state: feedState === 'open' ? 'live' : 'poll' };
       },
@@ -467,13 +468,16 @@
     };
   }
 
+  // A saved Finnhub key wins; otherwise, on claude.ai, the Astral plugin supplies data.
   const key = readKey();
   const dev = key ? devEndpoints() : {};
-  const fh = key ? root.Finnhub.create(Object.assign({ key }, dev)) : noKeyClient(root.Finnhub.FinnhubError);
+  const astral = !key && root.AstralPlugin && root.AstralPlugin.available() ? root.AstralPlugin.create(root.Finnhub.FinnhubError) : null;
+  const fh = key ? root.Finnhub.create(Object.assign({ key }, dev)) : astral || noKeyClient(root.Finnhub.FinnhubError);
   const market = liveMarket(fh, root.Finnhub.FinnhubError);
   market.endpoint = dev.api || root.Finnhub.DEFAULT_API;
   market.mock = !!dev.api; // the local mock server serves made-up data
-  market.hasKey = !!key;
+  market.hasKey = !!key || !!astral;
+  market.source = dev.api ? 'Mock API' : key ? 'Finnhub' : astral ? 'Astral' : null;
   market.setKey = k => { const ok = writeKey(k); return ok; };
   root.AmberlineMarket = market;
 })(window);
